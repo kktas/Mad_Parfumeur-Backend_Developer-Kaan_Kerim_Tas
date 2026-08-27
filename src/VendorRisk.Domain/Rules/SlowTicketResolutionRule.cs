@@ -19,6 +19,8 @@ public sealed class SlowTicketResolutionRule : RiskRuleBase
 
     public override RiskLevel Level => RiskLevel.Medium;
 
+    public override string? MatrixNode => RiskFactorNodes.SlowTicketResolution;
+
     protected override string Explanation => "Slow ticket resolution";
 
     // TODO: add a ticket-resolution measure to VendorProfile (e.g. AvgTicketResolutionHours)

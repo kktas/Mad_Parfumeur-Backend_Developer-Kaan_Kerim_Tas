@@ -14,5 +14,7 @@ public sealed class PrivacyPolicyExpiredRule : RiskRuleBase
 
     protected override string Explanation => "Privacy policy expired";
 
+    public override string? MatrixNode => RiskFactorNodes.ExpiredPrivacyPolicy;
+
     protected override bool IsTriggered(VendorProfile vendor) => !vendor.Documents.PrivacyPolicyValid;
 }

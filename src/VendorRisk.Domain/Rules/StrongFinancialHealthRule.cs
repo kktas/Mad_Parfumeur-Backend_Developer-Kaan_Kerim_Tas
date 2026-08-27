@@ -20,4 +20,10 @@ public sealed class StrongFinancialHealthRule : RiskRuleBase
 
     protected override bool IsTriggered(VendorProfile vendor) =>
         vendor.FinancialHealth > RiskThresholds.StrongFinancialHealth;
+
+    /// <summary>
+    /// A favourable finding adds no risk. It stays in the reason so the assessment shows what was
+    /// in the vendor's favour, and MatrixNode stays null: the matrix describes risks, not strengths.
+    /// </summary>
+    protected override double CalculateImpact(VendorProfile vendor) => 0d;
 }

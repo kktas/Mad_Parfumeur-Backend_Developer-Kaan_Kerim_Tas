@@ -14,6 +14,17 @@ public sealed class LowFinancialHealthRule : RiskRuleBase
 
     protected override string Explanation => $"Financial health below {RiskThresholds.LowFinancialHealth}";
 
+    public override string? MatrixNode => RiskFactorNodes.LowCashFlow;
+
     protected override bool IsTriggered(VendorProfile vendor) =>
         vendor.FinancialHealth < RiskThresholds.LowFinancialHealth;
+
+    /// <summary>Graded across the remaining range: 49 sits just inside High, 0 reaches the cap.</summary>
+    protected override double CalculateImpact(VendorProfile vendor)
+    {
+        var shortfall =
+            (RiskThresholds.LowFinancialHealth - vendor.FinancialHealth) / (double)RiskThresholds.LowFinancialHealth;
+
+        return RiskWeights.HighImpact + (RiskWeights.MaxEscalation * RiskWeights.Clamp(shortfall));
+    }
 }

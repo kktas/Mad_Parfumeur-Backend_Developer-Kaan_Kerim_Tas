@@ -17,6 +17,12 @@ public interface IRiskRule
     /// <summary>Severity this rule contributes when it fires.</summary>
     RiskLevel Level { get; }
 
+    /// <summary>
+    /// The <see cref="RiskFactorNodes"/> entry this rule observes, or <c>null</c> when the matrix
+    /// describes no matching risk item.
+    /// </summary>
+    string? MatrixNode { get; }
+
     /// <summary>Evaluates the vendor, returning <c>null</c> when the rule does not fire.</summary>
     RuleEvaluation? Evaluate(VendorProfile vendor);
 }

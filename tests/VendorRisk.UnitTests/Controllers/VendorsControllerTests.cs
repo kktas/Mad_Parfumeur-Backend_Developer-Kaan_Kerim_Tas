@@ -57,7 +57,7 @@ public class VendorsControllerTests
             .ReturnsAsync(new RiskAssessmentResponse
             {
                 VendorId = 1,
-                RiskScore = 0d,
+                RiskScore = 0.45d,
                 RiskLevel = "High",
                 Reason = "SLA below 95% (High) + Privacy policy expired (Medium)"
             });
@@ -67,7 +67,7 @@ public class VendorsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var assessment = Assert.IsType<RiskAssessmentResponse>(ok.Value);
         Assert.Equal("High", assessment.RiskLevel);
-        Assert.Equal(0d, assessment.RiskScore);
+        Assert.Equal(0.45d, assessment.RiskScore);
     }
 
     [Fact]

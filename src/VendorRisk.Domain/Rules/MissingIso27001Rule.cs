@@ -14,6 +14,8 @@ public sealed class MissingIso27001Rule : RiskRuleBase
 
     protected override string Explanation => $"Missing {RiskThresholds.RequiredCertification}";
 
+    public override string? MatrixNode => RiskFactorNodes.MissingIso27001;
+
     protected override bool IsTriggered(VendorProfile vendor) =>
         !vendor.HasCertification(RiskThresholds.RequiredCertification);
 }

@@ -73,7 +73,21 @@ public static class VendorMapper
         Category = dimension.Category.ToString(),
         RiskLevel = dimension.Level.ToString(),
         Score = dimension.Score,
-        TriggeredRules = [.. dimension.TriggeredRules.Select(ToResponse)]
+        Baseline = new CategoryBaselineResponse
+        {
+            Value = dimension.Baseline.Value,
+            Basis = dimension.Baseline.Basis
+        },
+        TriggeredRules = [.. dimension.TriggeredRules.Select(ToResponse)],
+        RelatedRisks = [.. dimension.RelatedRisks.Select(ToResponse)]
+    };
+
+    private static RelatedRiskResponse ToResponse(RelatedRisk risk) => new()
+    {
+        Risk = risk.Node,
+        Similarity = risk.Similarity,
+        ImpliedImpact = risk.ImpliedImpact,
+        SourceRuleId = risk.SourceRuleId
     };
 
     private static RuleEvaluationResponse ToResponse(RuleEvaluation evaluation) => new()

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Serilog;
 using VendorRisk.Api.Middleware;
 using VendorRisk.Application.DependencyInjection;
+using VendorRisk.Infrastructure;
 using VendorRisk.Infrastructure.DependencyInjection;
 using VendorRisk.Infrastructure.Persistence;
 using VendorRisk.Infrastructure.Seeding;
@@ -32,8 +33,9 @@ builder.Services.AddSwaggerGen(options =>
         Title = "Vendor Risk Scoring Engine",
         Version = "v1",
         Description =
-            "Rule-based vendor risk scoring. riskScore is always 0 in this build; " +
-            "riskLevel and reason are computed from the case study section 5 rules."
+            "Rule-based vendor risk scoring. Every assessment carries the findings behind it, " +
+            "a score per dimension weighted 0.4 / 0.3 / 0.3 as section 7 defines, and the related " +
+            "risks the appendix A similarity matrix implies."
     });
 
     var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{typeof(Program).Assembly.GetName().Name}.xml");
@@ -44,7 +46,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment.ContentRootPath);
 
 var healthChecks = builder.Services.AddHealthChecks();
 
@@ -97,8 +99,10 @@ static async Task MigrateAndSeedAsync(WebApplication app)
         await dbContext.Database.MigrateAsync();
 
         var contentRoot = app.Environment.ContentRootPath;
-        var datasetPath = ResolveDataPath(app.Configuration, "Database:SeedDatasetPath", "data/SampleVendorData.json", contentRoot);
-        var catalogPath = ResolveDataPath(app.Configuration, "Database:SeedCertificateCatalogPath", "data/SecurityCertificates.json", contentRoot);
+        var datasetPath = DataPaths.Resolve(
+            app.Configuration, DataPaths.SeedDatasetKey, DataPaths.SeedDatasetDefault, contentRoot);
+        var catalogPath = DataPaths.Resolve(
+            app.Configuration, DataPaths.CertificateCatalogKey, DataPaths.CertificateCatalogDefault, contentRoot);
 
         await scope.ServiceProvider.GetRequiredService<DataSeeder>().SeedAsync(datasetPath, catalogPath);
     }
@@ -110,12 +114,6 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     }
 }
 
-static string ResolveDataPath(IConfiguration configuration, string key, string fallback, string contentRootPath)
-{
-    var configured = configuration[key] ?? fallback;
-
-    return Path.IsPathRooted(configured) ? configured : Path.Combine(contentRootPath, configured);
-}
 
 /// <summary>Exposed so the integration-style tests can reference the API's entry point assembly.</summary>
 public partial class Program;

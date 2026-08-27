@@ -149,7 +149,8 @@ public class VendorServiceTests
         Assert.NotNull(assessment);
         Assert.Equal("High", assessment.RiskLevel);
         Assert.Equal("SLA below 95% (High) + Privacy policy expired (Medium)", assessment.Reason);
-        Assert.Equal(0d, assessment.RiskScore);
+        // 0.4 x 0.13 financial baseline + 0.3 x 0.84 operational + 0.3 x 0.50 security.
+        Assert.Equal(0.45d, assessment.RiskScore);
         _cache.VerifyAll();
     }
 

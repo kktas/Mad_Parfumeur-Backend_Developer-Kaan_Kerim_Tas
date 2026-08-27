@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using VendorRisk.Application.Scoring;
 using VendorRisk.Domain.Risk;
 using VendorRisk.Domain.Rules;
+using VendorRisk.Infrastructure.Scoring;
 
 namespace VendorRisk.UnitTests.TestSupport;
 
@@ -23,6 +24,16 @@ public static class EngineFactory
         new FailedPenTestRule()
     ];
 
-    public static RuleBasedRiskScoringEngine Create(IEnumerable<IRiskRule>? rules = null) =>
-        new(rules ?? AllRules(), NullLogger<RuleBasedRiskScoringEngine>.Instance);
+    /// <summary>
+    /// The matrix the API ships, read from the test output. Tests score against the real appendix A
+    /// data rather than a stand-in, so the coefficients they pin are the ones that go to production.
+    /// </summary>
+    public static IRiskFactorMatrix ShippedMatrix { get; } = JsonRiskFactorMatrix.Load(
+        Path.Combine(AppContext.BaseDirectory, "data", "RiskFactorMatrix.json"),
+        NullLogger<JsonRiskFactorMatrix>.Instance);
+
+    public static RuleBasedRiskScoringEngine Create(
+        IEnumerable<IRiskRule>? rules = null,
+        IRiskFactorMatrix? matrix = null) =>
+        new(rules ?? AllRules(), matrix ?? ShippedMatrix, NullLogger<RuleBasedRiskScoringEngine>.Instance);
 }

@@ -10,7 +10,10 @@ public sealed class RiskAssessmentResponse
 
     public string VendorName { get; set; } = string.Empty;
 
-    /// <summary>Always 0 in this build; see the Missing Code Notice in the README.</summary>
+    /// <summary>
+    /// Section 7's weighted score in 0..1, to two decimals:
+    /// Financial x 0.4 + Operational x 0.3 + SecurityCompliance x 0.3.
+    /// </summary>
     public double RiskScore { get; set; }
 
     public string RiskLevel { get; set; } = string.Empty;

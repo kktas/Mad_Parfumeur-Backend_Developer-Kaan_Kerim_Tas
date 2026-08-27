@@ -109,12 +109,24 @@ public class RuleBasedRiskScoringEngineTests
             Assert.All(dimension.TriggeredRules, rule => Assert.Equal(dimension.Category, rule.Category)));
     }
 
-    /// <summary>
-    /// Pins the deferred numeric score. When the section 7 formula is implemented, this test is
-    /// the one to replace with real expectations.
-    /// </summary>
     [Fact]
-    public void RiskScore_is_zero_on_every_path_until_the_numeric_engine_lands()
+    public void The_score_is_the_section_7_weighted_sum_of_the_dimensions()
+    {
+        var assessment = EngineFactory.Create().Evaluate(
+            new VendorBuilder().WithSlaUptime(93).WithDocuments(privacyPolicyValid: false).Build());
+
+        var byCategory = assessment.Dimensions.ToDictionary(dimension => dimension.Category);
+        var expected = Math.Round(
+            (0.4 * byCategory[RiskCategory.Financial].Score)
+            + (0.3 * byCategory[RiskCategory.Operational].Score)
+            + (0.3 * byCategory[RiskCategory.SecurityCompliance].Score),
+            2);
+
+        Assert.Equal(expected, assessment.RiskScore);
+    }
+
+    [Fact]
+    public void Every_score_stays_within_zero_and_one()
     {
         var engine = EngineFactory.Create();
 
@@ -122,7 +134,8 @@ public class RuleBasedRiskScoringEngineTests
         {
             VendorBuilder.Clean(),
             new VendorBuilder().WithCerts().Build(),
-            new VendorBuilder().WithFinancialHealth(10).WithSlaUptime(50).WithMajorIncidents(9)
+            // Everything wrong, well past every threshold: the score must still be bounded.
+            new VendorBuilder().WithFinancialHealth(0).WithSlaUptime(0).WithMajorIncidents(99)
                 .WithCerts().WithDocuments(false, false, false).Build()
         };
 
@@ -130,9 +143,32 @@ public class RuleBasedRiskScoringEngineTests
         {
             var assessment = engine.Evaluate(vendor);
 
-            Assert.Equal(0d, assessment.RiskScore);
-            Assert.All(assessment.Dimensions, dimension => Assert.Equal(0d, dimension.Score));
+            Assert.InRange(assessment.RiskScore, 0d, 1d);
+            Assert.All(assessment.Dimensions, dimension => Assert.InRange(dimension.Score, 0d, 1d));
         }
+    }
+
+    [Fact]
+    public void A_worse_vendor_never_scores_lower()
+    {
+        var engine = EngineFactory.Create();
+
+        var better = engine.Evaluate(new VendorBuilder().WithSlaUptime(94).WithMajorIncidents(1).Build());
+        var worse = engine.Evaluate(new VendorBuilder().WithSlaUptime(88).WithMajorIncidents(4).Build());
+
+        Assert.True(worse.RiskScore > better.RiskScore);
+    }
+
+    [Fact]
+    public void The_score_can_raise_the_level_but_never_lower_it()
+    {
+        // One Critical finding on an otherwise sound vendor scores well below the Critical band,
+        // and must still be reported as Critical.
+        var assessment = EngineFactory.Create().Evaluate(
+            new VendorBuilder().WithDocuments(pentestReportValid: false).Build());
+
+        Assert.Equal(RiskLevel.Critical, assessment.RiskLevel);
+        Assert.True(assessment.RiskScore < RiskWeights.CriticalBand);
     }
 
     [Fact]

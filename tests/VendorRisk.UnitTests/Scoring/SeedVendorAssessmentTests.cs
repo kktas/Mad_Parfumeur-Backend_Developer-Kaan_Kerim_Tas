@@ -11,6 +11,10 @@ namespace VendorRisk.UnitTests.Scoring;
 /// Regression net over the shipped dataset (case study appendix B). It pins what every seeded
 /// vendor assesses as, which makes the Critical-heavy distribution visible rather than surprising:
 /// 10 of the 15 sample vendors have pentestReportValid = false, and that rule is Critical.
+///
+/// The scores are what separate those ten vendors from one another, and they are pinned here
+/// because they are the calibration: changing a weight, a baseline or the damping factor moves
+/// these numbers, and that should never happen silently.
 /// </summary>
 public class SeedVendorAssessmentTests
 {
@@ -18,24 +22,25 @@ public class SeedVendorAssessmentTests
 
     [Theory]
     // Only vendor 1 lands on High: its pentest report is valid, so nothing Critical fires.
-    [InlineData(1, "High", "SLA below 95% (High) + Privacy policy expired (Medium)")]
-    [InlineData(2, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + More than 2 major incidents in the last 12 months (High) + Missing ISO27001 (High)")]
-    [InlineData(3, "Low", "Strong financial health above 80 (Low)")]
-    [InlineData(4, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
-    [InlineData(5, "Critical", "Failed penetration test (Critical) + Financial health below 50 (High) + SLA below 95% (High) + More than 2 major incidents in the last 12 months (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
-    [InlineData(6, "Critical", "Failed penetration test (Critical) + Missing ISO27001 (High)")]
-    [InlineData(7, "Low", "Strong financial health above 80 (Low)")]
-    [InlineData(8, "Critical", "Failed penetration test (Critical) + Financial health below 50 (High) + SLA below 95% (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
-    [InlineData(9, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High)")]
+    [InlineData(1, 0.42, "High", "SLA below 95% (High) + Privacy policy expired (Medium)")]
+    [InlineData(2, 0.73, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + More than 2 major incidents in the last 12 months (High) + Missing ISO27001 (High)")]
+    [InlineData(3, 0.00, "Low", "Strong financial health above 80 (Low)")]
+    [InlineData(4, 0.68, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
+    [InlineData(5, 0.95, "Critical", "Failed penetration test (Critical) + Financial health below 50 (High) + SLA below 95% (High) + More than 2 major incidents in the last 12 months (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
+    [InlineData(6, 0.39, "Critical", "Failed penetration test (Critical) + Missing ISO27001 (High)")]
+    [InlineData(7, 0.00, "Low", "Strong financial health above 80 (Low)")]
+    [InlineData(8, 0.96, "Critical", "Failed penetration test (Critical) + Financial health below 50 (High) + SLA below 95% (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
+    [InlineData(9, 0.68, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High)")]
     // Vendor 10 trips nothing at all: financial health sits inside the 50-80 band, SLA is above 95,
     // no incidents, ISO27001 held, every document valid.
-    [InlineData(10, "Low", RuleBasedRiskScoringEngine.NoFindingsReason)]
-    [InlineData(11, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + More than 2 major incidents in the last 12 months (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
-    [InlineData(12, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Strong financial health above 80 (Low)")]
-    [InlineData(13, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
-    [InlineData(14, "Low", "Strong financial health above 80 (Low)")]
-    [InlineData(15, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High)")]
-    public void Seed_vendors_assess_as_expected(int vendorId, string expectedLevel, string expectedReason)
+    [InlineData(10, 0.03, "Low", RuleBasedRiskScoringEngine.NoFindingsReason)]
+    [InlineData(11, 0.75, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + More than 2 major incidents in the last 12 months (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
+    [InlineData(12, 0.55, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Strong financial health above 80 (Low)")]
+    [InlineData(13, 0.67, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High) + Privacy policy expired (Medium)")]
+    [InlineData(14, 0.00, "Low", "Strong financial health above 80 (Low)")]
+    [InlineData(15, 0.66, "Critical", "Failed penetration test (Critical) + SLA below 95% (High) + Missing ISO27001 (High)")]
+    public void Seed_vendors_assess_as_expected(
+        int vendorId, double expectedScore, string expectedLevel, string expectedReason)
     {
         var vendor = SeedVendors.Value[vendorId];
 
@@ -43,7 +48,7 @@ public class SeedVendorAssessmentTests
 
         Assert.Equal(expectedLevel, assessment.RiskLevel.ToString());
         Assert.Equal(expectedReason, assessment.Reason);
-        Assert.Equal(0d, assessment.RiskScore);
+        Assert.Equal(expectedScore, assessment.RiskScore);
     }
 
     [Fact]

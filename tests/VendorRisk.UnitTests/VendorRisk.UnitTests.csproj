@@ -31,6 +31,7 @@
     <!-- The seed dataset is exercised as a regression fixture, so it must reach the test output. -->
     <None Include="..\..\data\SampleVendorData.json" Link="data\SampleVendorData.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\data\SecurityCertificates.json" Link="data\SecurityCertificates.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\data\RiskFactorMatrix.json" Link="data\RiskFactorMatrix.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
