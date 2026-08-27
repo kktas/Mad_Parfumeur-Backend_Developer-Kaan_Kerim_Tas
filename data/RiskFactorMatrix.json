@@ -1,0 +1,25 @@
+{
+  "financialRisk": {
+    "lowCashFlow": { "highDebtRatio": 0.88, "latePayments": 0.82, "weakRevenueStability": 0.79 },
+    "highDebtRatio": { "lowCashFlow": 0.88, "creditDowngrade": 0.84, "liquidityIssues": 0.80 },
+    "creditDowngrade": { "liquidityIssues": 0.86, "latePayments": 0.81, "weakRevenueStability": 0.77 }
+  },
+  "operationalRisk": {
+    "slaDrop": { "downtime": 0.87, "slowTicketResolution": 0.83, "serviceInstability": 0.79 },
+    "downtime": { "slaDrop": 0.87, "infrastructureFailure": 0.82, "lateDeliveries": 0.76 },
+    "majorIncident": { "recurringIncidents": 0.88, "serviceOutage": 0.85, "securityIncident": 0.80 },
+    "slowTicketResolution": { "slaDrop": 0.83, "lateIssueEscalation": 0.80, "supportCapacityIssues": 0.78 }
+  },
+  "securityRisk": {
+    "missingISO27001": { "weakAccessControl": 0.84, "noEncryptionPolicy": 0.79, "failedAudit": 0.76 },
+    "failedPenTest": { "internalVulnerabilities": 0.88, "weakFirewallRules": 0.83, "missingPatching": 0.79 },
+    "weakAccessControl": { "missingISO27001": 0.84, "weakPasswordPolicy": 0.81, "privilegeMisuseRisk": 0.75 },
+    "noEncryptionPolicy": { "dataLeakRisk": 0.86, "weakAccessControl": 0.79, "missingISO27001": 0.77 }
+  },
+  "complianceRisk": {
+    "expiredPrivacyPolicy": { "missingNDA": 0.81, "expiredContract": 0.78, "gdprConflict": 0.75 },
+    "missingNDA": { "expiredPrivacyPolicy": 0.81, "missingContract": 0.79, "weakLegalCoverage": 0.76 },
+    "gdprConflict": { "expiredPrivacyPolicy": 0.75, "dataRetentionIssues": 0.82, "insufficientComplianceDocs": 0.80 },
+    "expiredContract": { "missingNDA": 0.78, "expiredPrivacyPolicy": 0.78, "contractDisputeRisk": 0.74 }
+  }
+}

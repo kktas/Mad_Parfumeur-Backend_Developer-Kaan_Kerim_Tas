@@ -1,0 +1,11 @@
+{
+  "name": "TechPlus Solutions",
+  "financialHealth": 78,
+  "slaUptime": 93,
+  "majorIncidents": 1,
+  "securityCerts": [],
+  "documents": {
+    "contractValid": true,
+    "privacyPolicyValid": false
+  }
+}
