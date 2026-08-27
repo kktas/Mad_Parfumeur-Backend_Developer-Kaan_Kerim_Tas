@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vendor Risk Dashboard</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --border: #dfe3e8;
+      --text: #1c2430;
+      --muted: #63707f;
+      --low: #2f8f5b;
+      --medium: #b8860b;
+      --high: #c2410c;
+      --critical: #b02a37;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181d;
+        --surface: #1c2128;
+        --border: #303840;
+        --text: #e7ebf0;
+        --muted: #9aa7b4;
+        --low: #57c98a;
+        --medium: #e0b341;
+        --high: #f08a4b;
+        --critical: #f2707c;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 2rem 1.5rem 4rem;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    main { max-width: 1180px; margin: 0 auto; }
+
+    h1 { font-size: 1.5rem; margin: 0 0 .35rem; }
+    h2 { font-size: 1.1rem; margin: 2.25rem 0 .75rem; }
+
+    .subtitle { color: var(--muted); margin: 0 0 1.5rem; }
+
+    .notice {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--medium);
+      border-radius: 6px;
+      padding: .7rem .9rem;
+      color: var(--muted);
+      font-size: .875rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .scroll { overflow-x: auto; }
+
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+
+    th, td {
+      text-align: left;
+      padding: .6rem .8rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    th {
+      font-size: .74rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      background: var(--bg);
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+
+    td.reason { white-space: normal; min-width: 22rem; color: var(--muted); }
+
+    .badge {
+      display: inline-block;
+      padding: .12rem .5rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 600;
+      border: 1px solid currentColor;
+    }
+
+    .badge.Low { color: var(--low); }
+    .badge.Medium { color: var(--medium); }
+    .badge.High { color: var(--high); }
+    .badge.Critical { color: var(--critical); }
+
+    .toolbar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+
+    button {
+      font: inherit;
+      padding: .45rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) { border-color: var(--muted); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .status { color: var(--muted); font-size: .875rem; }
+    .status.error { color: var(--critical); }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .card h3 { margin: 0 0 .1rem; font-size: 1rem; }
+    .card .card-sub { color: var(--muted); font-size: .8rem; margin-bottom: .75rem; }
+
+    .metrics { display: grid; grid-template-columns: 1fr auto; gap: .25rem .75rem; font-size: .85rem; margin-bottom: .85rem; }
+    .metrics dt { color: var(--muted); margin: 0; }
+    .metrics dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .findings { list-style: none; margin: 0; padding: 0; font-size: .85rem; }
+    .findings li { padding: .3rem 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: .75rem; }
+    .findings li.none { color: var(--muted); }
+
+    footer { margin-top: 2.5rem; color: var(--muted); font-size: .8rem; }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Vendor Risk Dashboard</h1>
+  <p class="subtitle">Rule-based assessments from the section&nbsp;5 decision engine.</p>
+
+  <p class="notice">
+    <strong>riskScore is 0 for every vendor in this build.</strong>
+    The numeric 0.4&nbsp;/&nbsp;0.3&nbsp;/&nbsp;0.3 formula is not implemented yet, so the score column is a
+    placeholder. Risk levels and reasons below are real, computed from the rules that fired.
+  </p>
+
+  <div class="panel scroll">
+    <table>
+      <thead>
+        <tr>
+          <th><span aria-hidden="true">&#10003;</span></th>
+          <th>Id</th>
+          <th>Vendor</th>
+          <th>Financial</th>
+          <th>SLA %</th>
+          <th>Incidents</th>
+          <th>Certificates</th>
+          <th>Score</th>
+          <th>Level</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="vendor-rows">
+        <tr><td colspan="10" class="status">Loading vendors&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="toolbar">
+    <button id="compare-btn" type="button" disabled>Compare selected</button>
+    <button id="clear-btn" type="button" disabled>Clear selection</button>
+    <span class="status" id="selection-status">Select up to 10 vendors to compare.</span>
+  </div>
+
+  <section id="compare-section" hidden>
+    <h2>Comparison</h2>
+    <div class="compare-grid" id="compare-grid"></div>
+  </section>
+
+  <footer>
+    <a href="/swagger">API documentation</a> &middot; <a href="/health">Health</a>
+  </footer>
+</main>
+
+<script>
+  const MAX_COMPARE = 10;
+  const selected = new Set();
+
+  const rowsEl = document.getElementById('vendor-rows');
+  const compareBtn = document.getElementById('compare-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const statusEl = document.getElementById('selection-status');
+  const compareSection = document.getElementById('compare-section');
+  const compareGrid = document.getElementById('compare-grid');
+
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+
+  const badge = (level) => `<span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>`;
+
+  async function getJson(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  function setStatus(message, isError = false) {
+    statusEl.textContent = message;
+    statusEl.classList.toggle('error', isError);
+  }
+
+  function refreshToolbar() {
+    compareBtn.disabled = selected.size < 2;
+    clearBtn.disabled = selected.size === 0;
+
+    if (selected.size === 0) {
+      setStatus(`Select up to ${MAX_COMPARE} vendors to compare.`);
+    } else if (selected.size === 1) {
+      setStatus('Select at least one more vendor to compare.');
+    } else {
+      setStatus(`${selected.size} vendors selected.`);
+    }
+  }
+
+  async function loadVendors() {
+    try {
+      // pageSize covers the seeded dataset in a single request.
+      const page = await getJson('/api/vendor?page=1&pageSize=100');
+      if (page.items.length === 0) {
+        rowsEl.innerHTML = '<tr><td colspan="10" class="status">No vendors yet. POST /api/vendor to add one.</td></tr>';
+        return;
+      }
+
+      // Assessments come from a per-vendor endpoint, so fetch them alongside the list.
+      const assessments = await Promise.all(
+        page.items.map((vendor) => getJson(`/api/vendor/${vendor.id}/risk`))
+      );
+
+      rowsEl.innerHTML = page.items.map((vendor, index) => {
+        const assessment = assessments[index];
+        const certs = vendor.securityCerts.length ? escapeHtml(vendor.securityCerts.join(', ')) : '&mdash;';
+
+        return `<tr>
+          <td><input type="checkbox" data-id="${vendor.id}" aria-label="Select ${escapeHtml(vendor.name)}" /></td>
+          <td>${vendor.id}</td>
+          <td>${escapeHtml(vendor.name)}</td>
+          <td>${vendor.financialHealth}</td>
+          <td>${vendor.slaUptime}</td>
+          <td>${vendor.majorIncidents}</td>
+          <td>${certs}</td>
+          <td>${assessment.riskScore.toFixed(2)}</td>
+          <td>${badge(assessment.riskLevel)}</td>
+          <td class="reason">${escapeHtml(assessment.reason)}</td>
+        </tr>`;
+      }).join('');
+
+      rowsEl.querySelectorAll('input[type=checkbox]').forEach((checkbox) => {
+        checkbox.addEventListener('change', () => onToggle(checkbox));
+      });
+    } catch (error) {
+      rowsEl.innerHTML = `<tr><td colspan="10" class="status error">Could not load vendors: ${escapeHtml(error.message)}</td></tr>`;
+    }
+  }
+
+  function onToggle(checkbox) {
+    const id = Number(checkbox.dataset.id);
+
+    if (checkbox.checked) {
+      if (selected.size >= MAX_COMPARE) {
+        checkbox.checked = false;
+        setStatus(`You can compare at most ${MAX_COMPARE} vendors at a time.`, true);
+        return;
+      }
+      selected.add(id);
+    } else {
+      selected.delete(id);
+    }
+
+    refreshToolbar();
+  }
+
+  compareBtn.addEventListener('click', async () => {
+    compareBtn.disabled = true;
+    setStatus('Comparing…');
+
+    try {
+      const result = await getJson(`/api/vendor/compare?ids=${[...selected].join(',')}`);
+
+      compareGrid.innerHTML = result.vendors.map(({ vendor, assessment }) => {
+        const findings = assessment.triggeredRules.length
+          ? assessment.triggeredRules
+              .map((rule) => `<li><span>${escapeHtml(rule.explanation)}</span>${badge(rule.riskLevel)}</li>`)
+              .join('')
+          : '<li class="none">No rules fired.</li>';
+
+        return `<article class="card">
+          <h3>${escapeHtml(vendor.name)}</h3>
+          <p class="card-sub">Vendor #${vendor.id} &middot; ${badge(assessment.riskLevel)}</p>
+          <dl class="metrics">
+            <dt>Risk score</dt><dd>${assessment.riskScore.toFixed(2)}</dd>
+            <dt>Financial health</dt><dd>${vendor.financialHealth}</dd>
+            <dt>SLA uptime</dt><dd>${vendor.slaUptime}%</dd>
+            <dt>Major incidents</dt><dd>${vendor.majorIncidents}</dd>
+          </dl>
+          <ul class="findings">${findings}</ul>
+        </article>`;
+      }).join('');
+
+      compareSection.hidden = false;
+      compareSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setStatus(result.notFoundIds.length
+        ? `${result.vendors.length} compared. Not found: ${result.notFoundIds.join(', ')}.`
+        : `${result.vendors.length} vendors compared.`);
+    } catch (error) {
+      setStatus(`Comparison failed: ${error.message}`, true);
+    } finally {
+      refreshToolbar();
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    selected.clear();
+    rowsEl.querySelectorAll('input[type=checkbox]').forEach((checkbox) => { checkbox.checked = false; });
+    compareSection.hidden = true;
+    refreshToolbar();
+  });
+
+  loadVendors();
+</script>
+</body>
+</html>
