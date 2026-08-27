@@ -1,0 +1,16 @@
+# Overlay that points the API's Serilog pipeline at Elasticsearch. Use together with the elk profile:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.elk.yml --profile elk up
+#
+# The base configuration keeps the console JSON sink at WriteTo[0]; this adds the ES sink at [1].
+services:
+  api:
+    environment:
+      Serilog__WriteTo__1__Name: Elasticsearch
+      Serilog__WriteTo__1__Args__nodeUris: http://elasticsearch:9200
+      Serilog__WriteTo__1__Args__autoRegisterTemplate: "true"
+      Serilog__WriteTo__1__Args__autoRegisterTemplateVersion: ESv8
+      Serilog__WriteTo__1__Args__indexFormat: vendorrisk-logs-{0:yyyy.MM.dd}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
