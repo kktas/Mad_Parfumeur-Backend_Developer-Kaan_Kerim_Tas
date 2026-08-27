@@ -251,7 +251,21 @@ To run the full ELK stack:
 docker compose -f docker-compose.yml -f docker-compose.elk.yml --profile elk up
 ```
 
-That starts Elasticsearch and Kibana and adds the Elasticsearch sink to the API. Kibana lands on <http://localhost:5601>, with logs under the `vendorrisk-logs-*` index pattern. The stack needs roughly 2 GB of RAM, which is why it sits behind a profile rather than in the default `up`.
+That starts Elasticsearch and Kibana and adds the Elasticsearch sink to the API. The stack needs roughly 2 GB of RAM, which is why it sits behind a profile rather than in the default `up`.
+
+Kibana lands on <http://localhost:5601>. A `kibana-setup` container registers the **VendorRisk logs** data view (`vendorrisk-logs-*`, time field `@timestamp`) once Kibana reports healthy, so **Discover works with no manual setup** — open Kibana, go to Discover, pick *VendorRisk logs*, and widen the time picker. The container checks whether the view exists before creating it, so restarts are harmless, and Elasticsearch keeps its data in the `elasticsearch-data` volume, so logs and saved objects survive `docker compose down`.
+
+One quirk worth knowing when writing queries: the Serilog sink's index template names keyword sub-fields **`.raw`**, not the usual `.keyword`.
+
+```
+fields.RiskLevel.raw : "Critical"                 # works
+fields.RiskLevel : "Critical"                     # matches nothing (analyzed text)
+fields.VendorId : 5                               # mapped as long
+fields.TriggeredRuleIds.raw : "FailedPenTest"     # every assessment that fired this rule
+level.raw : "Error"                               # anything the exception middleware caught
+```
+
+Each assessment is logged with its vendor id, resulting level and the ids of the rules that fired, so the explainability the brief asks for is queryable in the log pipeline, not just in the API response.
 
 ### Migrations
 

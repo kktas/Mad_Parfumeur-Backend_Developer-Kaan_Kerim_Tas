@@ -57,6 +57,10 @@ services:
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
       - "9200:9200"
+    volumes:
+      # Also holds the .kibana index, so saved objects such as the data view below survive a
+      # `docker compose down` along with the logs themselves.
+      - elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -73,6 +77,45 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -q '\"level\":\"available\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+
+  # Registers the Discover data view so the logs are browsable without any manual setup.
+  # Runs once and exits; re-running is harmless because the data view has a fixed id.
+  kibana-setup:
+    image: curlimages/curl:8.10.1
+    profiles: ["elk"]
+    depends_on:
+      kibana:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        # Check by id first: Kibana answers a duplicate POST with 400, which is indistinguishable
+        # from a genuine bad request, so existence is tested rather than inferred from the error.
+        if curl -sf -o /dev/null http://kibana:5601/api/data_views/data_view/vendorrisk-logs; then
+          echo "Kibana data view 'VendorRisk logs' already exists."
+          exit 0
+        fi
+        # allowNoIndex lets this succeed before the API has written its first log line.
+        status=$$(curl -s -o /tmp/body -w '%{http_code}' \
+          -X POST http://kibana:5601/api/data_views/data_view \
+          -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
+          -d '{"data_view":{"id":"vendorrisk-logs","title":"vendorrisk-logs-*","name":"VendorRisk logs","timeFieldName":"@timestamp","allowNoIndex":true}}')
+        if [ "$$status" = "200" ]; then
+          echo "Kibana data view 'VendorRisk logs' created."
+        else
+          echo "Failed to create Kibana data view (HTTP $$status):"
+          cat /tmp/body
+          exit 1
+        fi
 
 volumes:
   postgres-data:
+  elasticsearch-data:
