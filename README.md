@@ -46,6 +46,8 @@ That starts the API, PostgreSQL and Redis. On first run the schema is migrated a
 | Swagger UI | <http://localhost:8080/swagger> |
 | Health check | <http://localhost:8080/health> |
 
+The containers publish PostgreSQL on **5433** and Redis on **6380** rather than their default ports, so the stack does not collide with a PostgreSQL or Redis you already run locally. Override `POSTGRES_PORT` and `REDIS_PORT` in `.env` if those are taken too — only the host side moves, so nothing inside the compose network changes.
+
 ### Local development
 
 Requires the .NET 8 SDK (or a newer SDK — `net8.0` builds fine under SDK 9/10) and a reachable PostgreSQL.
@@ -55,7 +57,7 @@ docker compose up -d postgres redis          # or bring your own PostgreSQL
 dotnet run --project src/VendorRisk.Api
 ```
 
-Redis is optional: with no `ConnectionStrings:Redis` configured the app registers a no-op cache and recomputes every assessment.
+Redis is optional. It defaults to `localhost:6380`; clear `ConnectionStrings:Redis` to an empty string and the app registers a no-op cache and recomputes every assessment instead. Note that a configured Redis is also health-checked, so `/health` reports unhealthy if the connection string points at an instance that is not running.
 
 ### Tests
 
@@ -226,7 +228,7 @@ Settings come from `appsettings.json` and can be overridden by environment varia
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `ConnectionStrings:Postgres` | `Host=localhost;…` | Required. The app fails fast at startup if absent. |
-| `ConnectionStrings:Redis` | *(empty)* | Optional. Empty means no-op cache. |
+| `ConnectionStrings:Redis` | `localhost:6380` | Optional. Set it to an empty string to disable caching entirely (no-op cache). |
 | `Database:MigrateOnStartup` | `true` | Set `false` when a pipeline applies migrations. |
 | `Database:SeedDatasetPath` | `data/SampleVendorData.json` | Relative to the content root, or absolute. |
 
