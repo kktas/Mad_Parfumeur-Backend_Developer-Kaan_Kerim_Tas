@@ -65,7 +65,7 @@ Redis is optional. It defaults to `localhost:6380`; clear `ConnectionStrings:Red
 dotnet test
 ```
 
-145 tests covering every rule boundary, the graded impacts and baselines, the matrix propagation, the engine's roll-up and reason formatting, the certificate links and the shipped datasets, the service's cache and commit behaviour, controller status codes, and a regression theory pinning the level, reason and score of all 15 seeded vendors.
+146 tests covering every rule boundary, the graded impacts and baselines, the matrix propagation, the engine's roll-up and reason formatting, the certificate links and the shipped datasets, the service's cache and commit behaviour, controller status codes, and a regression theory pinning the level, reason and score of all 15 seeded vendors.
 
 ---
 
@@ -110,7 +110,7 @@ Transactions are left implicit: EF Core wraps every `SaveChanges` in one, and no
 
 1. Every registered `IRiskRule` is evaluated against the vendor. A rule returns `null` when it does not fire, and an impact in `0..1` when it does.
 2. **Reason** joins each finding as `Explanation (Level)` with ` + `, most severe first. Rules of equal severity keep DI registration order, so the string is deterministic.
-3. Each dimension combines its findings with a graded baseline, then with the risks the similarity matrix implies - see [Scoring](#scoring).
+3. Each dimension combines its findings with a graded baseline, then with the risks the similarity matrix implies — see [Scoring](#scoring).
 4. **`riskScore`** weights the three dimensions `0.4 / 0.3 / 0.3`, exactly as section 7 defines.
 5. **`riskLevel`** is the more severe of the highest triggered rule and the score's own band.
 
@@ -249,79 +249,85 @@ curl 'http://localhost:8080/api/vendor/compare?ids=1,3,5'
 
 ## Scoring
 
-The brief fixes the category weights in section 7 and nothing else: no per-rule weights, no way to combine several findings, no score-to-level thresholds, and no method for turning appendix A's *similarity* coefficients into a number - and its own worked example is not reproducible from its own rules. So **the weights below are the brief's; everything else is an assumption, recorded here.** Every constant lives in [`RiskWeights.cs`](src/VendorRisk.Domain/Risk/RiskWeights.cs).
+The brief fixes the category weights in section 7 and nothing else: no per-rule weights, no way to combine several findings, no score-to-level thresholds, and no method for turning appendix A's *similarity* coefficients into a number — and its own worked example is not reproducible from its own rules. So **the weights below are the brief's; everything else is an assumption, recorded here.** Every constant lives in [`RiskWeights.cs`](src/VendorRisk.Domain/Risk/RiskWeights.cs).
 
 ```
-riskScore = 0.4 x Financial + 0.3 x Operational + 0.3 x SecurityCompliance      (section 7)
+riskScore = 0.4 × Financial + 0.3 × Operational + 0.3 × SecurityCompliance      (section 7)
 ```
 
 ### 1. What a finding is worth
 
-Severity sets the base impact - `Low 0.10 / Medium 0.40 / High 0.70 / Critical 1.00` - and a rule with a continuous input is then graded **inside its own band**, so a vendor barely past a threshold does not score like one far past it:
+Severity sets the base impact — `Low 0.10 / Medium 0.40 / High 0.70 / Critical 1.00` — and a rule with a continuous input is then graded **inside its own band**, so a vendor barely past a threshold does not score like one far past it:
 
 | Rule | Impact | At the edges |
 | --- | --- | --- |
-| `LowFinancialHealth` | `0.70 + 0.30 x (50 - health)/50` | 49 → 0.71, 0 → 1.00 |
-| `SlaBelowThreshold` | `0.70 + 0.30 x clamp((95 - sla)/10)` | 94.9 → 0.70, 85 and below → 1.00 |
-| `MajorIncidents` | `0.70 + 0.30 x clamp((n - 2)/3)` | 3 → 0.80, 5 and above → 1.00 |
+| `LowFinancialHealth` | `0.70 + 0.30 × (50 — health)/50` | 49 → 0.71, 0 → 1.00 |
+| `SlaBelowThreshold` | `0.70 + 0.30 × clamp((95 — sla)/10)` | 94.9 → 0.70, 85 and below → 1.00 |
+| `MajorIncidents` | `0.70 + 0.30 × clamp((n — 2)/3)` | 3 → 0.80, 5 and above → 1.00 |
 | `MissingIso27001`, `PrivacyPolicyExpired`, `FailedPenTest` | flat `0.70` / `0.40` / `1.00` | binary inputs, nothing to grade |
 | `StrongFinancialHealth` | `0.00` | favourable: it appears in the reason, it adds no risk |
 
-### 2. The graded baseline - the main assumption
+### 2. The graded baseline — the main assumption
 
 Section 5 defines cliffs, not curves, and leaves gaps between them. The largest is financial: nothing at all is said about health between 50 and 80, in the category section 7 weights **the heaviest**. Left strictly to the rules, that 0.4-weighted dimension would read `0.00` for 13 of the 15 sample vendors and the scores would bunch together.
 
-So each category grades its continuous inputs across their whole range, anchored on section 5's own thresholds and capped at `0.40` - the Medium impact - so a baseline can never outweigh a real finding:
+So each category grades its continuous inputs across their whole range, anchored on section 5's own thresholds and capped at `0.40` — the Medium impact — so a baseline can never outweigh a real finding:
 
 | Category | Baseline | Reasoning |
 | --- | --- | --- |
-| Financial | `0.40 x clamp((80 - health)/30)` | 0 at the "strong" threshold, the cap at the "high risk" one |
-| Operational | `0.40 x clamp(min(n,3)/3)` | Incidents under section 5's "more than 2" bar are still evidence |
-| SecurityCompliance | `0.00` | Every input is binary - a certificate is held or not, a document is valid or not |
+| Financial | `0.40 × clamp((80 — health)/30)` | 0 at the "strong" threshold, the cap at the "high risk" one |
+| Operational | `0.40 × clamp(min(n,3)/3)` | Incidents under section 5's "more than 2" bar are still evidence |
+| SecurityCompliance | `0.00` | Every input is binary — a certificate is held or not, a document is valid or not |
 
 Baselines carry the sentence that justifies them (`"Financial health 75 of 100"`), so no number in a payload is left unexplained. They are **not** rules: the rule set stays exactly as section 5 writes it, and no reason string is invented.
 
 ### 3. Combining findings within a category
 
 ```
-observed = 1 - product of (1 - impact)      over the findings and the baseline
+observed = 1 — product of (1 — impact)      over the findings and the baseline
 ```
 
-Contributions are treated as independent, so each closes a share of the remaining distance to 1. Order-independent, monotonic - more findings always mean more risk - and bounded: two Mediums (0.64) outrank either alone but stay under a High. A Critical finding contributes 1 and saturates its category outright, which is what "Critical" should mean.
+Contributions are treated as independent, so each closes a share of the remaining distance to 1. Order-independent, monotonic — more findings always mean more risk — and bounded: two Mediums (0.64) outrank either alone but stay under a High. A Critical finding contributes 1 and saturates its category outright, which is what "Critical" should mean.
 
 ### 4. The similarity matrix
 
-Section 2.3 says to *"compute a score using the Risk Similarity Matrix"*, and section 6 frames it as *risk item to similar risks*. Read literally: **an observed finding implies the risks that tend to come with it.** Each rule declares the matrix entry it observes, and each neighbour is implied at `impact x similarity`:
+Section 2.3 says to *"compute a score using the Risk Similarity Matrix"*, and section 6 frames it as *risk item to similar risks*. Read literally: **an observed finding implies the risks that tend to come with it.** Each rule declares the matrix entry it observes, and each neighbour is implied at `impact × similarity`:
 
 ```
-category = observed + (1 - observed) x 0.5 x strongestImpliedRisk
+category = observed + (1 — observed) × 0.5 × strongestImpliedRisk
 ```
 
-An implied risk is inferred rather than seen, so it counts half, and it can only close part of the gap to 1 - never push past it. Where two findings imply the same risk the stronger wins; a risk the dimension already observes is not implied on top of itself; and a saturated category has no room left, so a Critical finding's implications change nothing.
+An implied risk is inferred rather than seen, so it counts half, and it can only close part of the gap to 1 — never push past it. Where two findings imply the same risk the stronger wins; a risk the dimension already observes is not implied on top of itself; and a saturated category has no room left, so a Critical finding's implications change nothing.
 
 An SLA of 90% (impact 0.85) implies `downtime 0.87 → 0.74`, `slowTicketResolution 0.83 → 0.71` and `serviceInstability 0.79 → 0.67`. The strongest lifts that dimension from `0.85` to `0.91`. All of them are returned in `relatedRisks`, because they are part of the picture even though only one moves the number.
 
-The matrix is read once at startup from [`data/RiskFactorMatrix.json`](data/RiskFactorMatrix.json) into a singleton, [`JsonRiskFactorMatrix`](src/VendorRisk.Infrastructure/Scoring/JsonRiskFactorMatrix.cs). Its four groups are containers only - node names are unique across them - and most neighbours it names have no entry of their own, which is expected: scoring needs a coefficient, not a row. **If the file is missing or malformed the API logs a warning and scores on observed findings alone** rather than failing to start.
+The matrix is read once at startup from [`data/RiskFactorMatrix.json`](data/RiskFactorMatrix.json) into a singleton, [`JsonRiskFactorMatrix`](src/VendorRisk.Infrastructure/Scoring/JsonRiskFactorMatrix.cs). Its four groups are containers only — node names are unique across them — and most neighbours it names have no entry of their own, which is expected: scoring needs a coefficient, not a row. **If the file is missing or malformed the API logs a warning and scores on observed findings alone** rather than failing to start.
 
-Six of the seven firing rules map onto a matrix entry directly. `LowFinancialHealth` has no exact counterpart - the matrix describes `lowCashFlow`, `highDebtRatio` and `creditDowngrade`, not a health score - and is mapped to `lowCashFlow` as the general financial-distress entry. That is an assumption.
+Six of the seven firing rules map onto a matrix entry directly. `LowFinancialHealth` has no exact counterpart — the matrix describes `lowCashFlow`, `highDebtRatio` and `creditDowngrade`, not a health score — and is mapped to `lowCashFlow` as the general financial-distress entry. That is an assumption.
 
 ### 5. Score to level
 
-Bands: `< 0.25 Low`, `< 0.50 Medium`, `< 0.75 High`, `>= 0.75 Critical`.
+Bands: `< 0.25 Low`, `< 0.50 Medium`, `< 0.75 High`, `≥ 0.75 Critical`.
 
-`riskLevel` is **the more severe of** the highest triggered rule and the band. The score can raise a level - several Medium findings together are worse than any one alone - but never lower it: a failed penetration test on an otherwise sound vendor scores only `0.30` overall, and must still read as Critical. On the sample data the rule reading wins every time, so **no vendor's level changed when the score landed**; what changed is that the ten vendors sharing `Critical` can now be ranked.
+`riskLevel` is **the more severe of** the highest triggered rule and the band. The score can raise a level — several Medium findings together are worse than any one alone — but never lower it: a failed penetration test on an otherwise sound vendor scores only `0.30` overall, and must still read as Critical. On the sample data the rule reading wins every time, so **no vendor's level changed when the score landed**; what changed is that the ten vendors sharing `Critical` can now be ranked.
 
-### Worked example - TechPlus Solutions (vendor 1)
+### Computed, never stored
+
+There is no assessment table. `riskScore`, `riskLevel`, `reason` and the whole breakdown are derived from the vendor's current data on every request, so a score cannot drift out of step with the vendor it describes, and changing a weight or a rule changes every answer immediately rather than only for vendors written afterwards.
+
+The one thing that is kept is the **finished response**, cached in Redis under `vendor:{id}:assessment` for 10 minutes and dropped the moment the vendor is updated or deleted. A cache hit returns exactly what a recomputation would have produced from the same data; a miss, a cold start and a Redis outage all just mean scoring it again. Both `/api/vendor/{id}/risk` and `/api/vendor/compare` read through that same cache, so comparing vendors reuses whatever has already been computed for them.
+
+### Worked example — TechPlus Solutions (vendor 1)
 
 `financialHealth 78, slaUptime 93, 1 incident, ISO27001 held, privacy policy invalid, pentest valid`
 
 | Dimension | Findings | Baseline | Strongest implied | Score |
 | --- | --- | --- | --- | --- |
-| Financial | - | 0.03 (health 78) | - | **0.03** |
+| Financial | — | 0.03 (health 78) | — | **0.03** |
 | Operational | SLA below 95% = 0.76 | 0.13 (1 incident) | downtime 0.66 | **0.86** |
-| SecurityCompliance | Privacy policy expired = 0.40 | - | missingNDA 0.32 | **0.50** |
+| SecurityCompliance | Privacy policy expired = 0.40 | — | missingNDA 0.32 | **0.50** |
 
-`0.4 x 0.03 + 0.3 x 0.86 + 0.3 x 0.50 = 0.42`. Band says Medium, the rules say High, so the assessment is **High**.
+`0.4 × 0.03 + 0.3 × 0.86 + 0.3 × 0.50 = 0.42`. Band says Medium, the rules say High, so the assessment is **High**.
 
 ### Calibration over the sample data
 
@@ -399,7 +405,7 @@ Settings come from `appsettings.json` and can be overridden by environment varia
 
 ### Caching
 
-Assessments are cached for 10 minutes under `vendor:{id}:assessment` and invalidated on update and delete. Cache faults are logged and swallowed — a Redis outage degrades to recomputation rather than failing the request.
+Assessments are cached for 10 minutes under `vendor:{id}:assessment` and invalidated on update and delete. Both the single-assessment and the comparison endpoint read through it. Cache faults are logged and swallowed — a Redis outage degrades to recomputation rather than failing the request, because nothing is ever read from the cache that could not be recomputed. See [Computed, never stored](#computed-never-stored).
 
 ### Logging
 

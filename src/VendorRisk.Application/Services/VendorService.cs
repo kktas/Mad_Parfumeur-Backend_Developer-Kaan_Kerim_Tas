@@ -131,9 +131,7 @@ public sealed class VendorService : IVendorService
 
     public async Task<RiskAssessmentResponse?> GetRiskAssessmentAsync(int id, CancellationToken cancellationToken = default)
     {
-        var cacheKey = CacheKeys.Assessment(id);
-
-        var cached = await _cache.GetAsync<RiskAssessmentResponse>(cacheKey, cancellationToken);
+        var cached = await _cache.GetAsync<RiskAssessmentResponse>(CacheKeys.Assessment(id), cancellationToken);
         if (cached is not null)
         {
             _logger.LogDebug("Assessment cache hit for vendor {VendorId}", id);
@@ -146,12 +144,7 @@ public sealed class VendorService : IVendorService
             return null;
         }
 
-        var response = _scoringEngine.Evaluate(vendor).ToResponse(vendor.Name);
-        await _cache.SetAsync(cacheKey, response, AssessmentCacheTtl, cancellationToken);
-
-        _logger.LogDebug("Assessment cache miss for vendor {VendorId}; computed and cached", id);
-
-        return response;
+        return await ComputeAndCacheAsync(vendor, cancellationToken);
     }
 
     public async Task<VendorComparisonResponse> CompareAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
@@ -175,12 +168,36 @@ public sealed class VendorService : IVendorService
                 continue;
             }
 
+            // Same cache-aside path as a single assessment, so comparing vendors reuses whatever
+            // has already been computed for them rather than scoring the whole set again.
+            var assessment = await _cache.GetAsync<RiskAssessmentResponse>(CacheKeys.Assessment(id), cancellationToken)
+                ?? await ComputeAndCacheAsync(vendor, cancellationToken);
+
             response.Vendors.Add(new VendorComparisonItem
             {
                 Vendor = vendor.ToResponse(),
-                Assessment = _scoringEngine.Evaluate(vendor).ToResponse(vendor.Name)
+                Assessment = assessment
             });
         }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Scores the vendor and caches the result. Assessments are never stored: they are derived from
+    /// the vendor's current data every time, and the cache holds the finished response only so that
+    /// repeat reads within its lifetime skip the work. A cache miss and a cold start are the same
+    /// thing here - the score is always the one today's data produces.
+    /// </summary>
+    private async Task<RiskAssessmentResponse> ComputeAndCacheAsync(
+        VendorProfile vendor,
+        CancellationToken cancellationToken)
+    {
+        var response = _scoringEngine.Evaluate(vendor).ToResponse(vendor.Name);
+
+        await _cache.SetAsync(CacheKeys.Assessment(vendor.Id), response, AssessmentCacheTtl, cancellationToken);
+
+        _logger.LogDebug("Assessment cache miss for vendor {VendorId}; computed and cached", vendor.Id);
 
         return response;
     }

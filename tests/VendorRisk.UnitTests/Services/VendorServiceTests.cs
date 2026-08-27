@@ -389,10 +389,49 @@ public class VendorServiceTests
                 new VendorBuilder().WithId(2).WithName("Second").Build(),
                 new VendorBuilder().WithId(1).WithName("First").Build()
             ]);
+        AssessmentCacheIsEmpty();
 
         var comparison = await CreateSut().CompareAsync([1, 2, 99, 1]);
 
         Assert.Equal(["First", "Second"], comparison.Vendors.Select(item => item.Vendor.Name));
         Assert.Equal([99], comparison.NotFoundIds);
+    }
+
+    [Fact]
+    public async Task CompareAsync_reuses_an_assessment_already_in_the_cache()
+    {
+        var cached = new RiskAssessmentResponse { VendorId = 1, RiskScore = 0.42d, RiskLevel = "High" };
+
+        _repository
+            .Setup(repository => repository.GetByIdsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new VendorBuilder().WithId(1).WithName("First").Build()]);
+        _cache
+            .Setup(cache => cache.GetAsync<RiskAssessmentResponse>(CacheKeys.Assessment(1), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cached);
+
+        var comparison = await CreateSut().CompareAsync([1]);
+
+        // Scores are never stored, but a response already computed within the cache window is not
+        // computed a second time just because it was asked for through the comparison endpoint.
+        Assert.Same(cached, comparison.Vendors.Single().Assessment);
+        _cache.Verify(
+            cache => cache.SetAsync(
+                It.IsAny<string>(), It.IsAny<RiskAssessmentResponse>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>Nothing cached, and whatever is computed may be written back.</summary>
+    private void AssessmentCacheIsEmpty()
+    {
+        _cache
+            .Setup(cache => cache.GetAsync<RiskAssessmentResponse>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((RiskAssessmentResponse?)null);
+        _cache
+            .Setup(cache => cache.SetAsync(
+                It.IsAny<string>(),
+                It.IsAny<RiskAssessmentResponse>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
     }
 }
