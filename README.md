@@ -65,7 +65,7 @@ Redis is optional. It defaults to `localhost:6380`; clear `ConnectionStrings:Red
 dotnet test
 ```
 
-88 tests covering every rule boundary, the engine's roll-up and reason formatting, the service's cache behaviour, controller status codes, and a regression theory pinning all 15 seeded vendors.
+100 tests covering every rule boundary, the engine's roll-up and reason formatting, the service's cache behaviour, controller status codes, and a regression theory pinning all 15 seeded vendors.
 
 ---
 
@@ -107,7 +107,7 @@ Rules arrive by constructor injection (`IEnumerable<IRiskRule>`), so adding a ru
 | `PrivacyPolicyExpired` | `privacyPolicyValid == false` | Medium | Privacy policy expired |
 | `FailedPenTest` | `pentestReportValid == false` | Critical | Failed penetration test |
 
-Boundaries follow the brief literally and are pinned by tests: `financialHealth` between 50 and 80 **inclusive** fires neither financial rule; an SLA of exactly 95 does not fire; exactly 2 major incidents does not fire. Certificate matching is case-insensitive.
+Boundaries follow the brief literally and are pinned by tests: `financialHealth` between 50 and 80 **inclusive** fires neither financial rule; an SLA of exactly 95 does not fire; exactly 2 major incidents does not fire. Certificates are stored upper-cased, and matching is case-insensitive regardless.
 
 Section 5 calls the middle level *Moderate*; it is named `Medium` throughout so reason clauses and the overall `riskLevel` share one vocabulary of `Low` / `Medium` / `High` / `Critical`.
 
@@ -119,16 +119,21 @@ Section 5 calls the middle level *Moderate*; it is named `Medium` throughout so 
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/vendor` | Register a vendor |
+| `POST` | `/api/vendor` | Register a vendor (409 if the name is taken) |
 | `GET` | `/api/vendor?page=1&pageSize=20` | List vendors (paged) |
 | `GET` | `/api/vendor/{id}` | Fetch one vendor |
-| `PUT` | `/api/vendor/{id}` | Replace a vendor's inputs (invalidates its cached assessment) |
+| `PUT` | `/api/vendor/{id}` | Replace a vendor's inputs (409 if the name is taken; invalidates its cached assessment) |
 | `DELETE` | `/api/vendor/{id}` | Remove a vendor |
 | `GET` | `/api/vendor/{id}/risk` | Risk assessment with reason and breakdown |
 | `GET` | `/api/vendor/compare?ids=1,2,3` | Side-by-side comparison (max 10) |
 | `GET` | `/health` | Liveness plus PostgreSQL and Redis checks |
 
-Errors come back as RFC 7807 problem documents. Validation rejects `financialHealth` and `slaUptime` outside 0–100, negative `majorIncidents`, and a missing name.
+Errors come back as RFC 7807 problem documents. Validation rejects `financialHealth` and `slaUptime` outside 0–100, negative `majorIncidents`, and a name shorter than 2 or longer than 200 characters. All field errors are reported together rather than one at a time.
+
+Two further rules apply to vendor data:
+
+- **Vendor names are unique, irrespective of case and surrounding whitespace.** `POST` or `PUT` with a name another vendor holds returns **409 Conflict**; an update that keeps the vendor's own name is fine. The service checks before writing, and a unique index on `LOWER("Name")` is the real guard, so two concurrent requests cannot slip a duplicate through.
+- **Security certificates are canonicalised** on the way in: trimmed, upper-cased, blanks dropped, and case-insensitive duplicates collapsed while preserving order. Posting `["iso27001","ISO27001"," Iso27001 ","soc2"]` stores `["ISO27001","SOC2"]`. Seeded rows go through the same normalisation.
 
 ### Example requests
 
