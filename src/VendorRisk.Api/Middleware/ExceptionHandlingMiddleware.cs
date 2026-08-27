@@ -46,6 +46,21 @@ public sealed class ExceptionHandlingMiddleware
                 Instance = context.Request.Path
             });
         }
+        catch (DuplicateCertificateCodeException ex)
+        {
+            // Two requests registered the same new certificate code at once. The winner's row is in
+            // the catalogue, so this is a conflict the client clears by repeating the request.
+            _logger.LogInformation("Rejected {Method} {Path}: {Message}",
+                context.Request.Method, context.Request.Path, ex.Message);
+
+            await WriteProblemAsync(context, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Certificate code already registered",
+                Detail = ex.Message,
+                Instance = context.Request.Path
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception for {Method} {Path}",

@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using VendorRisk.Application.Abstractions;
 using VendorRisk.Domain.Vendors;
 
@@ -59,47 +58,18 @@ public sealed class VendorRepository : IVendorRepository
             cancellationToken);
     }
 
-    public async Task<VendorProfile> AddAsync(VendorProfile vendor, CancellationToken cancellationToken = default)
-    {
-        _dbContext.Vendors.Add(vendor);
-        await SaveTranslatingDuplicateNameAsync(vendor.Name, cancellationToken);
+    public void Add(VendorProfile vendor) => _dbContext.Vendors.Add(vendor);
 
-        return vendor;
-    }
-
-    public async Task UpdateAsync(VendorProfile vendor, CancellationToken cancellationToken = default)
+    public void Update(VendorProfile vendor)
     {
         // The service loads the vendor before editing it, so the change tracker already holds the
-        // edits, certificate links included. Re-attaching with Update() would also mark the
-        // catalogue rows themselves as modified.
+        // edits, certificate links included. Re-attaching a tracked entity with Update() would also
+        // mark the catalogue rows behind those links as modified.
         if (_dbContext.Entry(vendor).State == EntityState.Detached)
         {
             _dbContext.Vendors.Update(vendor);
         }
-
-        await SaveTranslatingDuplicateNameAsync(vendor.Name, cancellationToken);
     }
 
-    /// <summary>
-    /// The service checks for a duplicate name before saving, but two concurrent requests can both
-    /// pass that check. The unique index is the real guard, so translate its violation into the
-    /// same domain exception rather than surfacing a 500.
-    /// </summary>
-    private async Task SaveTranslatingDuplicateNameAsync(string vendorName, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            throw new DuplicateVendorNameException(vendorName);
-        }
-    }
-
-    public async Task DeleteAsync(VendorProfile vendor, CancellationToken cancellationToken = default)
-    {
-        _dbContext.Vendors.Remove(vendor);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-    }
+    public void Remove(VendorProfile vendor) => _dbContext.Vendors.Remove(vendor);
 }

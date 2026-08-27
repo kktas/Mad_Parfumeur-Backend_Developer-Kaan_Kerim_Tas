@@ -2,7 +2,13 @@ using VendorRisk.Domain.Vendors;
 
 namespace VendorRisk.Application.Abstractions;
 
-/// <summary>Persistence boundary for vendors. Implemented in the Infrastructure layer.</summary>
+/// <summary>
+/// Persistence boundary for vendors. Implemented in the Infrastructure layer.
+/// </summary>
+/// <remarks>
+/// The write methods only stage work; nothing is written until
+/// <see cref="IUnitOfWork.SaveChangesAsync"/> commits it.
+/// </remarks>
 public interface IVendorRepository
 {
     Task<VendorProfile?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
@@ -21,9 +27,12 @@ public interface IVendorRepository
     /// </param>
     Task<bool> NameExistsAsync(string name, int? excludeVendorId = null, CancellationToken cancellationToken = default);
 
-    Task<VendorProfile> AddAsync(VendorProfile vendor, CancellationToken cancellationToken = default);
+    /// <summary>Stages a new vendor. Its id is assigned when the unit of work commits.</summary>
+    void Add(VendorProfile vendor);
 
-    Task UpdateAsync(VendorProfile vendor, CancellationToken cancellationToken = default);
+    /// <summary>Stages the edits made to a vendor this repository returned.</summary>
+    void Update(VendorProfile vendor);
 
-    Task DeleteAsync(VendorProfile vendor, CancellationToken cancellationToken = default);
+    /// <summary>Stages the vendor's removal, along with its certificate links.</summary>
+    void Remove(VendorProfile vendor);
 }

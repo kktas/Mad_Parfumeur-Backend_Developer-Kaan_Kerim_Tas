@@ -7,8 +7,10 @@ using VendorRisk.Domain.Vendors;
 namespace VendorRisk.Application.Services;
 
 /// <summary>
-/// Orchestrates vendor CRUD and assessment retrieval. Assessments are read cache-aside and the
-/// cache entry is invalidated whenever the vendor's inputs change or the vendor is removed.
+/// Orchestrates vendor CRUD and assessment retrieval. Repositories stage the writes and this class
+/// decides where the transaction ends, committing each operation with a single
+/// <see cref="IUnitOfWork.SaveChangesAsync"/>. Assessments are read cache-aside and the cache entry
+/// is invalidated after a commit that changed the vendor's inputs, or removed it.
 /// </summary>
 public sealed class VendorService : IVendorService
 {
@@ -16,6 +18,7 @@ public sealed class VendorService : IVendorService
 
     private readonly IVendorRepository _repository;
     private readonly ISecurityCertificateRepository _certificates;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly IRiskScoringEngine _scoringEngine;
     private readonly ICacheService _cache;
     private readonly ILogger<VendorService> _logger;
@@ -24,6 +27,7 @@ public sealed class VendorService : IVendorService
     public VendorService(
         IVendorRepository repository,
         ISecurityCertificateRepository certificates,
+        IUnitOfWork unitOfWork,
         IRiskScoringEngine scoringEngine,
         ICacheService cache,
         ILogger<VendorService> logger,
@@ -31,6 +35,7 @@ public sealed class VendorService : IVendorService
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _certificates = certificates ?? throw new ArgumentNullException(nameof(certificates));
+        _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
         _scoringEngine = scoringEngine ?? throw new ArgumentNullException(nameof(scoringEngine));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -46,11 +51,15 @@ public sealed class VendorService : IVendorService
         var vendor = request.ToDomain(_timeProvider.GetUtcNow().UtcDateTime);
         vendor.SetCertificates(await _certificates.ResolveAsync(request.SecurityCerts, cancellationToken));
 
-        var created = await _repository.AddAsync(vendor, cancellationToken);
+        _repository.Add(vendor);
 
-        _logger.LogInformation("Created vendor {VendorId} ({VendorName})", created.Id, created.Name);
+        // One commit for the vendor, its certificate links and any catalogue row the codes above
+        // registered. The id is assigned here.
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return created.ToResponse();
+        _logger.LogInformation("Created vendor {VendorId} ({VendorName})", vendor.Id, vendor.Name);
+
+        return vendor.ToResponse();
     }
 
     public async Task<VendorResponse?> GetAsync(int id, CancellationToken cancellationToken = default)
@@ -91,9 +100,10 @@ public sealed class VendorService : IVendorService
         // A full replacement: certificates the request omits are unlinked, the catalogue keeps them.
         vendor.SetCertificates(await _certificates.ResolveAsync(request.SecurityCerts, cancellationToken));
 
-        await _repository.UpdateAsync(vendor, cancellationToken);
+        _repository.Update(vendor);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // The inputs changed, so any cached assessment is now stale.
+        // The inputs changed and the change is committed, so any cached assessment is now stale.
         await _cache.RemoveAsync(CacheKeys.Assessment(id), cancellationToken);
 
         _logger.LogInformation("Updated vendor {VendorId} and invalidated its cached assessment", id);
@@ -109,7 +119,9 @@ public sealed class VendorService : IVendorService
             return false;
         }
 
-        await _repository.DeleteAsync(vendor, cancellationToken);
+        _repository.Remove(vendor);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
         await _cache.RemoveAsync(CacheKeys.Assessment(id), cancellationToken);
 
         _logger.LogInformation("Deleted vendor {VendorId} and invalidated its cached assessment", id);

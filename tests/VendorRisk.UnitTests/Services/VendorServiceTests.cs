@@ -12,6 +12,7 @@ public class VendorServiceTests
 {
     private readonly Mock<IVendorRepository> _repository = new(MockBehavior.Strict);
     private readonly Mock<ISecurityCertificateRepository> _certificates = new(MockBehavior.Strict);
+    private readonly Mock<IUnitOfWork> _unitOfWork = new(MockBehavior.Strict);
     private readonly Mock<ICacheService> _cache = new(MockBehavior.Strict);
 
     public VendorServiceTests()
@@ -21,11 +22,18 @@ public class VendorServiceTests
         _certificates
             .Setup(repository => repository.ResolveAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IEnumerable<string>? codes, CancellationToken _) => Catalogue(codes));
+
+        // The commit boundary. Every write goes through it, so tests assert on how often it is
+        // called rather than on each repository saving for itself.
+        _unitOfWork
+            .Setup(unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
     }
 
     private VendorService CreateSut() => new(
         _repository.Object,
         _certificates.Object,
+        _unitOfWork.Object,
         EngineFactory.Create(),
         _cache.Object,
         NullLogger<VendorService>.Instance);
@@ -48,13 +56,10 @@ public class VendorServiceTests
     public async Task CreateAsync_persists_the_vendor_and_returns_it()
     {
         NameIsFree();
+        // Add only stages the vendor; the database assigns its id when the unit of work commits.
         _repository
-            .Setup(repository => repository.AddAsync(It.IsAny<VendorProfile>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((VendorProfile vendor, CancellationToken _) =>
-            {
-                vendor.Id = 7;
-                return vendor;
-            });
+            .Setup(repository => repository.Add(It.IsAny<VendorProfile>()))
+            .Callback((VendorProfile vendor) => vendor.Id = 7);
 
         var created = await CreateSut().CreateAsync(new CreateVendorRequest
         {
@@ -85,10 +90,10 @@ public class VendorServiceTests
         await Assert.ThrowsAsync<DuplicateVendorNameException>(
             () => sut.CreateAsync(new CreateVendorRequest { Name = "  TechPlus Solutions  " }));
 
-        // Rejected before the database is touched.
-        _repository.Verify(
-            repository => repository.AddAsync(It.IsAny<VendorProfile>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        // Rejected before anything is staged, and nothing is committed.
+        _repository.Verify(repository => repository.Add(It.IsAny<VendorProfile>()), Times.Never);
+        _unitOfWork.Verify(
+            unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -175,9 +180,7 @@ public class VendorServiceTests
         _repository
             .Setup(repository => repository.GetByIdAsync(3, It.IsAny<CancellationToken>()))
             .ReturnsAsync(vendor);
-        _repository
-            .Setup(repository => repository.UpdateAsync(vendor, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _repository.Setup(repository => repository.Update(vendor));
         _cache
             .Setup(cache => cache.RemoveAsync(CacheKeys.Assessment(3), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -212,9 +215,7 @@ public class VendorServiceTests
         _repository
             .Setup(repository => repository.NameExistsAsync("TechPlus Solutions", 3, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        _repository
-            .Setup(repository => repository.UpdateAsync(vendor, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _repository.Setup(repository => repository.Update(vendor));
         _cache
             .Setup(cache => cache.RemoveAsync(CacheKeys.Assessment(3), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -248,9 +249,9 @@ public class VendorServiceTests
             () => sut.UpdateAsync(3, new UpdateVendorRequest { Name = "Skyline Software" }));
 
         Assert.Equal("Original Name", vendor.Name);   // unchanged
-        _repository.Verify(
-            repository => repository.UpdateAsync(It.IsAny<VendorProfile>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        _repository.Verify(repository => repository.Update(It.IsAny<VendorProfile>()), Times.Never);
+        _unitOfWork.Verify(
+            unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
         _cache.Verify(cache => cache.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -274,9 +275,7 @@ public class VendorServiceTests
         _repository
             .Setup(repository => repository.GetByIdAsync(4, It.IsAny<CancellationToken>()))
             .ReturnsAsync(vendor);
-        _repository
-            .Setup(repository => repository.DeleteAsync(vendor, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _repository.Setup(repository => repository.Remove(vendor));
         _cache
             .Setup(cache => cache.RemoveAsync(CacheKeys.Assessment(4), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -293,6 +292,72 @@ public class VendorServiceTests
             .ReturnsAsync((VendorProfile?)null);
 
         Assert.False(await CreateSut().DeleteAsync(99));
+    }
+
+    [Fact]
+    public async Task CreateAsync_commits_the_vendor_and_its_new_certificates_together()
+    {
+        NameIsFree();
+        _repository
+            .Setup(repository => repository.Add(It.IsAny<VendorProfile>()))
+            .Callback((VendorProfile vendor) => vendor.Id = 8);
+
+        await CreateSut().CreateAsync(new CreateVendorRequest
+        {
+            Name = "Single Commit Vendor",
+            SecurityCerts = ["ISO27001", "BRAND-NEW-CODE"]
+        });
+
+        // The catalogue row the second code registers is staged, not saved separately: one commit
+        // covers the vendor, its links and that row.
+        _unitOfWork.Verify(
+            unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_leaves_the_cached_assessment_alone_when_the_commit_fails()
+    {
+        var vendor = new VendorBuilder().WithId(5).Build();
+
+        NameIsFree();
+        _repository
+            .Setup(repository => repository.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(vendor);
+        _repository.Setup(repository => repository.Update(vendor));
+        _unitOfWork
+            .Setup(unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DuplicateVendorNameException("Taken Name"));
+
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<DuplicateVendorNameException>(
+            () => sut.UpdateAsync(5, new UpdateVendorRequest { Name = "Taken Name" }));
+
+        // Nothing changed in the database, so evicting the cached assessment would only cost a
+        // recomputation - and evicting before the commit would be a lie if it then failed.
+        _cache.Verify(
+            cache => cache.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_leaves_the_cached_assessment_alone_when_the_commit_fails()
+    {
+        var vendor = new VendorBuilder().WithId(6).Build();
+
+        _repository
+            .Setup(repository => repository.GetByIdAsync(6, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(vendor);
+        _repository.Setup(repository => repository.Remove(vendor));
+        _unitOfWork
+            .Setup(unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("commit failed"));
+
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.DeleteAsync(6));
+
+        _cache.Verify(
+            cache => cache.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

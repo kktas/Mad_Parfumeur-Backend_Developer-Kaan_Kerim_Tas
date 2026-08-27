@@ -10,6 +10,10 @@ namespace VendorRisk.Infrastructure.Seeding;
 /// Loads the certificate catalogue and the sample vendors from case study appendix B on first run.
 /// Idempotent: each table is filled only while it is empty, so restarts never duplicate or
 /// overwrite live data.
+///
+/// This is startup work rather than a request, so it saves through the DbContext directly instead
+/// of through IUnitOfWork - it also needs the raw SQL below, and the abstraction exists to keep EF
+/// Core out of the application layer, which the seeder is not part of.
 /// </summary>
 public sealed class DataSeeder
 {

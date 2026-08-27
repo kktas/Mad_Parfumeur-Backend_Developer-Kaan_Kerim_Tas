@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using VendorRisk.Application.Abstractions;
 using VendorRisk.Domain.Vendors;
 
@@ -29,6 +28,10 @@ public sealed class SecurityCertificateRepository : ISecurityCertificateReposito
         // The API contract in section 4 takes free-form codes, so a code the catalogue has not seen
         // before is registered rather than rejected. Its display name defaults to the code itself
         // until someone gives it a better one; the seeded entries carry real names.
+        //
+        // The new rows are only staged: they are written by the unit of work along with the vendor
+        // that asked for them, so a failed vendor write leaves no orphan catalogue entries. Their
+        // ids are assigned at commit, and EF fills in the join rows from the object graph.
         var missing = wanted
             .Where(code => !byCode.ContainsKey(code))
             .Select(code => new SecurityCertificate { Code = code, Name = code })
@@ -38,29 +41,13 @@ public sealed class SecurityCertificateRepository : ISecurityCertificateReposito
         {
             _dbContext.Certificates.AddRange(missing);
 
-            try
+            foreach (var certificate in missing)
             {
-                await _dbContext.SaveChangesAsync(cancellationToken);
-                foreach (var certificate in missing)
-                {
-                    byCode[certificate.Code] = certificate;
-                }
-            }
-            catch (DbUpdateException ex)
-                when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-            {
-                // Another request registered the same code first. Its row is the winner; drop ours
-                // and read the catalogue again.
-                foreach (var certificate in missing)
-                {
-                    _dbContext.Entry(certificate).State = EntityState.Detached;
-                }
-
-                byCode = await LoadByCodeAsync(wanted, cancellationToken);
+                byCode[certificate.Code] = certificate;
             }
         }
 
-        return [.. wanted.Where(byCode.ContainsKey).Select(code => byCode[code])];
+        return [.. wanted.Select(code => byCode[code])];
     }
 
     private async Task<Dictionary<string, SecurityCertificate>> LoadByCodeAsync(

@@ -8,7 +8,7 @@ using VendorRisk.Infrastructure.Seeding;
 
 namespace VendorRisk.Infrastructure.DependencyInjection;
 
-/// <summary>Registers PostgreSQL persistence, the cache, and the seeder.</summary>
+/// <summary>Registers PostgreSQL persistence, the unit of work, the cache, and the seeder.</summary>
 public static class InfrastructureServiceCollectionExtensions
 {
     public const string PostgresConnectionName = "Postgres";
@@ -24,6 +24,10 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<IVendorRepository, VendorRepository>();
         services.AddScoped<ISecurityCertificateRepository, SecurityCertificateRepository>();
+
+        // Scoped alongside the repositories so all three share one DbContext, which is what makes
+        // a single SaveChanges cover everything an operation staged.
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<DataSeeder>();
 
         return services.AddCache(configuration);

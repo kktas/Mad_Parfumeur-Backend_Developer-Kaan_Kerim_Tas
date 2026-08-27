@@ -65,7 +65,7 @@ Redis is optional. It defaults to `localhost:6380`; clear `ConnectionStrings:Red
 dotnet test
 ```
 
-107 tests covering every rule boundary, the engine's roll-up and reason formatting, the certificate links and the two shipped datasets, the service's cache behaviour, controller status codes, and a regression theory pinning all 15 seeded vendors.
+110 tests covering every rule boundary, the engine's roll-up and reason formatting, the certificate links and the two shipped datasets, the service's cache and commit behaviour, controller status codes, and a regression theory pinning all 15 seeded vendors.
 
 ---
 
@@ -83,7 +83,28 @@ tests/
 
 Dependencies point inward only: `Api → Application → Domain` and `Infrastructure → Application → Domain`. The API references Infrastructure solely to wire up its composition root, so the application layer stays ignorant of EF Core and Redis.
 
-Every boundary is an interface — `IRiskRule`, `IRiskScoringEngine`, `IVendorRepository`, `ISecurityCertificateRepository`, `ICacheService`, `IVendorService` — which is what lets the unit tests run with mocks and no database.
+Every boundary is an interface — `IRiskRule`, `IRiskScoringEngine`, `IVendorRepository`, `ISecurityCertificateRepository`, `IUnitOfWork`, `ICacheService`, `IVendorService` — which is what lets the unit tests run with mocks and no database.
+
+### Unit of work
+
+`DbContext` is already a unit of work and `DbSet<T>` already a repository, so [`IUnitOfWork`](src/VendorRisk.Application/Abstractions/IUnitOfWork.cs) is deliberately thin: it exists so the application layer has a commit boundary it can call without referencing EF Core, and so that no repository saves behind the service's back.
+
+**Repositories only stage work.** `Add`, `Update` and `Remove` are `void` — they touch the change tracker and nothing else. `VendorService` decides where the transaction ends and closes it with one `SaveChangesAsync`:
+
+```csharp
+vendor.SetCertificates(await _certificates.ResolveAsync(request.SecurityCerts, ct));
+_repository.Add(vendor);
+await _unitOfWork.SaveChangesAsync(ct);   // vendor + links + new catalogue rows, one transaction
+```
+
+That is not just tidier — it is a behaviour fix. Creating a vendor whose payload names an unknown certificate code used to be **two** commits, one in each repository, so a vendor write that failed left the catalogue row it had registered behind. Now the new row is staged and either both land or neither does.
+
+Two further consequences, both deliberate:
+
+- **Uniqueness violations are translated at the commit point.** The services check first so the common case answers cleanly, but two concurrent requests can both pass that check, and only the unique index actually stops them. [`UnitOfWork`](src/VendorRisk.Infrastructure/Persistence/UnitOfWork.cs) matches the violated constraint by name and raises `DuplicateVendorNameException` or `DuplicateCertificateCodeException`, which the middleware answers with **409** instead of a 500. Verified by racing six identical creates: one `201`, five `409`, no orphan rows.
+- **The cache is invalidated after the commit, never before.** An eviction ahead of a write that then fails would discard a valid entry for nothing.
+
+Transactions are left implicit: EF Core wraps every `SaveChanges` in one, and no operation here needs more than a single save, so `IUnitOfWork` exposes no explicit `BeginTransaction`. The seeder is the one place that still saves through the `DbContext` directly — it is startup work rather than a request, and it needs raw SQL for the identity sequence.
 
 ### How scoring works
 
@@ -128,7 +149,7 @@ Section 5 calls the middle level *Moderate*; it is named `Medium` throughout so 
 | `GET` | `/api/vendor/compare?ids=1,2,3` | Side-by-side comparison (max 10) |
 | `GET` | `/health` | Liveness plus PostgreSQL and Redis checks |
 
-Errors come back as RFC 7807 problem documents. Validation rejects `financialHealth` and `slaUptime` outside 0–100, negative `majorIncidents`, and a name shorter than 2 or longer than 200 characters. All field errors are reported together rather than one at a time.
+Errors come back as RFC 7807 problem documents. Besides the duplicate-name conflict below, a **409** also answers the rare case where two requests register the same previously unknown certificate code at once — the loser repeats the request and links to the row that won. Validation rejects `financialHealth` and `slaUptime` outside 0–100, negative `majorIncidents`, and a name shorter than 2 or longer than 200 characters. All field errors are reported together rather than one at a time.
 
 Two further rules apply to vendor data:
 
