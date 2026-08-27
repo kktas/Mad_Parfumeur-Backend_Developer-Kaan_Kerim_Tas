@@ -50,6 +50,8 @@ public sealed class VendorProfileConfiguration : IEntityTypeConfiguration<Vendor
         builder.Property(vendor => vendor.CreatedAtUtc).IsRequired();
         builder.Property(vendor => vendor.UpdatedAtUtc).IsRequired();
 
-        builder.HasIndex(vendor => vendor.Name);
+        // Vendor names are unique irrespective of case. EF cannot express an index over an
+        // expression, so the unique index on lower("Name") is created by raw SQL in the
+        // AddVendorNameUniqueIndex migration; this keeps the plain lookup index off the table.
     }
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using VendorRisk.Domain.Vendors;
 
 namespace VendorRisk.Api.Middleware;
 
@@ -30,6 +31,21 @@ public sealed class ExceptionHandlingMiddleware
             _logger.LogInformation("Request {Method} {Path} was cancelled by the client",
                 context.Request.Method, context.Request.Path);
         }
+        catch (DuplicateVendorNameException ex)
+        {
+            // A rejected name is an expected outcome, not a fault: log it as information and
+            // answer with 409 rather than the generic 500 below.
+            _logger.LogInformation("Rejected {Method} {Path}: {Message}",
+                context.Request.Method, context.Request.Path, ex.Message);
+
+            await WriteProblemAsync(context, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Vendor name already exists",
+                Detail = ex.Message,
+                Instance = context.Request.Path
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception for {Method} {Path}",
@@ -49,13 +65,23 @@ public sealed class ExceptionHandlingMiddleware
                 Instance = context.Request.Path
             };
 
-            problem.Extensions["traceId"] = Activity.Current?.Id ?? context.TraceIdentifier;
-
-            context.Response.Clear();
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            context.Response.ContentType = "application/problem+json";
-
-            await context.Response.WriteAsJsonAsync(problem);
+            await WriteProblemAsync(context, problem);
         }
+    }
+
+    private static async Task WriteProblemAsync(HttpContext context, ProblemDetails problem)
+    {
+        if (context.Response.HasStarted)
+        {
+            return;
+        }
+
+        problem.Extensions["traceId"] = Activity.Current?.Id ?? context.TraceIdentifier;
+
+        context.Response.Clear();
+        context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/problem+json";
+
+        await context.Response.WriteAsJsonAsync(problem);
     }
 }

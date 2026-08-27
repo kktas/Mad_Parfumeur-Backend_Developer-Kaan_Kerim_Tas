@@ -13,6 +13,14 @@ public interface IVendorRepository
 
     Task<int> CountAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Whether another vendor already holds this name, compared case-insensitively.
+    /// </summary>
+    /// <param name="excludeVendorId">
+    /// Vendor to ignore, so an update that keeps its own name does not collide with itself.
+    /// </param>
+    Task<bool> NameExistsAsync(string name, int? excludeVendorId = null, CancellationToken cancellationToken = default);
+
     Task<VendorProfile> AddAsync(VendorProfile vendor, CancellationToken cancellationToken = default);
 
     Task UpdateAsync(VendorProfile vendor, CancellationToken cancellationToken = default);

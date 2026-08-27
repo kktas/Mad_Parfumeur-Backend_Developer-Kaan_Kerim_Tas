@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using VendorRisk.Application.Abstractions;
 using VendorRisk.Application.Dtos;
 using VendorRisk.Application.Mapping;
+using VendorRisk.Domain.Vendors;
 
 namespace VendorRisk.Application.Services;
 
@@ -36,6 +37,8 @@ public sealed class VendorService : IVendorService
     public async Task<VendorResponse> CreateAsync(CreateVendorRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        await EnsureNameIsFreeAsync(request.Name, excludeVendorId: null, cancellationToken);
 
         var vendor = request.ToDomain(_timeProvider.GetUtcNow().UtcDateTime);
         var created = await _repository.AddAsync(vendor, cancellationToken);
@@ -75,6 +78,9 @@ public sealed class VendorService : IVendorService
         {
             return null;
         }
+
+        // Excludes this vendor, so keeping its own name is not treated as a collision.
+        await EnsureNameIsFreeAsync(request.Name, excludeVendorId: id, cancellationToken);
 
         request.ApplyTo(vendor, _timeProvider.GetUtcNow().UtcDateTime);
         await _repository.UpdateAsync(vendor, cancellationToken);
@@ -157,5 +163,21 @@ public sealed class VendorService : IVendorService
         }
 
         return response;
+    }
+
+    /// <summary>
+    /// Rejects a name another vendor already holds. This produces a clean 409 before the database
+    /// is touched; the unique index behind it is what actually guarantees the invariant.
+    /// </summary>
+    private async Task EnsureNameIsFreeAsync(string name, int? excludeVendorId, CancellationToken cancellationToken)
+    {
+        var candidate = (name ?? string.Empty).Trim();
+
+        if (await _repository.NameExistsAsync(candidate, excludeVendorId, cancellationToken))
+        {
+            _logger.LogInformation("Rejected vendor name {VendorName}: already taken", candidate);
+
+            throw new DuplicateVendorNameException(candidate);
+        }
     }
 }

@@ -19,9 +19,16 @@ public class VendorServiceTests
         _cache.Object,
         NullLogger<VendorService>.Instance);
 
+    /// <summary>Default: the name is free, so uniqueness never blocks the test under inspection.</summary>
+    private void NameIsFree() => _repository
+        .Setup(repository => repository.NameExistsAsync(
+            It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(false);
+
     [Fact]
     public async Task CreateAsync_persists_the_vendor_and_returns_it()
     {
+        NameIsFree();
         _repository
             .Setup(repository => repository.AddAsync(It.IsAny<VendorProfile>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((VendorProfile vendor, CancellationToken _) =>
@@ -36,14 +43,33 @@ public class VendorServiceTests
             FinancialHealth = 78,
             SlaUptime = 93,
             MajorIncidents = 1,
-            SecurityCerts = ["ISO27001", "  ", "SOC2 "],
+            SecurityCerts = ["iso27001", "  ", " soc2 ", "ISO27001", "Iso27001"],
             Documents = new VendorDocumentsDto { ContractValid = true, PrivacyPolicyValid = false, PentestReportValid = true }
         });
 
         Assert.Equal(7, created.Id);
         Assert.Equal("TechPlus Solutions", created.Name);           // trimmed
-        Assert.Equal(["ISO27001", "SOC2"], created.SecurityCerts);  // blanks dropped, entries trimmed
+        // Blanks dropped, entries trimmed and upper-cased, case-insensitive duplicates collapsed.
+        Assert.Equal(["ISO27001", "SOC2"], created.SecurityCerts);
         _repository.VerifyAll();
+    }
+
+    [Fact]
+    public async Task CreateAsync_rejects_a_name_another_vendor_already_holds()
+    {
+        _repository
+            .Setup(repository => repository.NameExistsAsync("TechPlus Solutions", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<DuplicateVendorNameException>(
+            () => sut.CreateAsync(new CreateVendorRequest { Name = "  TechPlus Solutions  " }));
+
+        // Rejected before the database is touched.
+        _repository.Verify(
+            repository => repository.AddAsync(It.IsAny<VendorProfile>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -126,6 +152,7 @@ public class VendorServiceTests
     {
         var vendor = new VendorBuilder().WithId(3).Build();
 
+        NameIsFree();
         _repository
             .Setup(repository => repository.GetByIdAsync(3, It.IsAny<CancellationToken>()))
             .ReturnsAsync(vendor);
@@ -149,6 +176,60 @@ public class VendorServiceTests
         Assert.NotNull(updated);
         Assert.Equal("Renamed Vendor", updated.Name);
         _cache.Verify(cache => cache.RemoveAsync(CacheKeys.Assessment(3), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_lets_a_vendor_keep_its_own_name()
+    {
+        var vendor = new VendorBuilder().WithId(3).WithName("TechPlus Solutions").Build();
+
+        _repository
+            .Setup(repository => repository.GetByIdAsync(3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(vendor);
+        // The check must exclude vendor 3 itself, or renaming nothing would look like a collision.
+        _repository
+            .Setup(repository => repository.NameExistsAsync("TechPlus Solutions", 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _repository
+            .Setup(repository => repository.UpdateAsync(vendor, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _cache
+            .Setup(cache => cache.RemoveAsync(CacheKeys.Assessment(3), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var updated = await CreateSut().UpdateAsync(3, new UpdateVendorRequest
+        {
+            Name = "TechPlus Solutions",
+            FinancialHealth = 60,
+            SlaUptime = 99
+        });
+
+        Assert.NotNull(updated);
+        _repository.VerifyAll();
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_a_name_a_different_vendor_holds()
+    {
+        var vendor = new VendorBuilder().WithId(3).WithName("Original Name").Build();
+
+        _repository
+            .Setup(repository => repository.GetByIdAsync(3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(vendor);
+        _repository
+            .Setup(repository => repository.NameExistsAsync("Skyline Software", 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<DuplicateVendorNameException>(
+            () => sut.UpdateAsync(3, new UpdateVendorRequest { Name = "Skyline Software" }));
+
+        Assert.Equal("Original Name", vendor.Name);   // unchanged
+        _repository.Verify(
+            repository => repository.UpdateAsync(It.IsAny<VendorProfile>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _cache.Verify(cache => cache.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
