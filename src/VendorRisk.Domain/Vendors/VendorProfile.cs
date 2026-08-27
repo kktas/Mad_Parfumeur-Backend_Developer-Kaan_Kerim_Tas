@@ -18,7 +18,10 @@ public class VendorProfile
     /// <summary>Major incidents recorded in the last 12 months.</summary>
     public int MajorIncidents { get; set; }
 
-    /// <summary>Security certifications held, e.g. ISO27001, SOC2, PCI-DSS.</summary>
+    /// <summary>
+    /// Security certifications held, e.g. ISO27001, SOC2, PCI-DSS. Stored upper-cased and
+    /// de-duplicated; see <see cref="SecurityCertificates.Normalise"/>.
+    /// </summary>
     public List<string> SecurityCerts { get; set; } = [];
 
     public VendorDocuments Documents { get; set; } = new();

@@ -85,7 +85,6 @@ public static class VendorMapper
         PentestReportValid = documents.PentestReportValid
     };
 
-    /// <summary>Trims and drops blanks so certificate matching is not defeated by stray whitespace.</summary>
     private static List<string> NormaliseCerts(IEnumerable<string>? certs) =>
-        [.. (certs ?? []).Where(cert => !string.IsNullOrWhiteSpace(cert)).Select(cert => cert.Trim())];
+        SecurityCertificates.Normalise(certs);
 }

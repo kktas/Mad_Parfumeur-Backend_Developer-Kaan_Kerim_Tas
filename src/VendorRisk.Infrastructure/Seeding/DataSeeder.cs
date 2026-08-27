@@ -56,7 +56,8 @@ public sealed class DataSeeder
             FinancialHealth = record.FinancialHealth,
             SlaUptime = record.SlaUptime,
             MajorIncidents = record.MajorIncidents,
-            SecurityCerts = record.SecurityCerts,
+            // Seeded rows go through the same canonical form as anything posted to the API.
+            SecurityCerts = SecurityCertificates.Normalise(record.SecurityCerts),
             Documents = new VendorDocuments
             {
                 ContractValid = record.Documents.ContractValid,
