@@ -54,7 +54,9 @@ public class SecurityCertificatesTests
     public void Normalised_certificates_satisfy_the_ISO27001_rule()
     {
         var vendor = new VendorBuilder().WithCerts("iso27001").Build();
-        vendor.SecurityCerts = SecurityCertificates.Normalise(vendor.SecurityCerts);
+        vendor.SetCertificates(SecurityCertificates
+            .Normalise(vendor.SecurityCerts)
+            .Select(code => new SecurityCertificate { Code = code, Name = code }));
 
         Assert.Equal(RiskThresholds.RequiredCertification, vendor.SecurityCerts.Single());
         Assert.True(vendor.HasCertification(RiskThresholds.RequiredCertification));

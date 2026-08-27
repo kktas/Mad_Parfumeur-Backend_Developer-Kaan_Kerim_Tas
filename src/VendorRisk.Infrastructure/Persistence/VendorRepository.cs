@@ -15,7 +15,7 @@ public sealed class VendorRepository : IVendorRepository
     }
 
     public Task<VendorProfile?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
-        _dbContext.Vendors.FirstOrDefaultAsync(vendor => vendor.Id == id, cancellationToken);
+        WithCertificates().FirstOrDefaultAsync(vendor => vendor.Id == id, cancellationToken);
 
     public async Task<IReadOnlyList<VendorProfile>> GetByIdsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
     {
@@ -24,17 +24,27 @@ public sealed class VendorRepository : IVendorRepository
             return [];
         }
 
-        return await _dbContext.Vendors
+        return await WithCertificates()
             .Where(vendor => ids.Contains(vendor.Id))
             .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<VendorProfile>> ListAsync(int page, int pageSize, CancellationToken cancellationToken = default) =>
-        await _dbContext.Vendors
+        await WithCertificates()
             .OrderBy(vendor => vendor.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Every read loads the certificates: the rules and the API response both need them, and a
+    /// vendor without them would silently look like a vendor holding none. Split queries keep the
+    /// join off the vendor columns.
+    /// </summary>
+    private IQueryable<VendorProfile> WithCertificates() =>
+        _dbContext.Vendors
+            .Include(vendor => vendor.Certificates)
+            .AsSplitQuery();
 
     public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         _dbContext.Vendors.CountAsync(cancellationToken);
@@ -59,7 +69,14 @@ public sealed class VendorRepository : IVendorRepository
 
     public async Task UpdateAsync(VendorProfile vendor, CancellationToken cancellationToken = default)
     {
-        _dbContext.Vendors.Update(vendor);
+        // The service loads the vendor before editing it, so the change tracker already holds the
+        // edits, certificate links included. Re-attaching with Update() would also mark the
+        // catalogue rows themselves as modified.
+        if (_dbContext.Entry(vendor).State == EntityState.Detached)
+        {
+            _dbContext.Vendors.Update(vendor);
+        }
+
         await SaveTranslatingDuplicateNameAsync(vendor.Name, cancellationToken);
     }
 

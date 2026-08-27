@@ -15,6 +15,7 @@ public sealed class VendorService : IVendorService
     private static readonly TimeSpan AssessmentCacheTtl = TimeSpan.FromMinutes(10);
 
     private readonly IVendorRepository _repository;
+    private readonly ISecurityCertificateRepository _certificates;
     private readonly IRiskScoringEngine _scoringEngine;
     private readonly ICacheService _cache;
     private readonly ILogger<VendorService> _logger;
@@ -22,12 +23,14 @@ public sealed class VendorService : IVendorService
 
     public VendorService(
         IVendorRepository repository,
+        ISecurityCertificateRepository certificates,
         IRiskScoringEngine scoringEngine,
         ICacheService cache,
         ILogger<VendorService> logger,
         TimeProvider? timeProvider = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _certificates = certificates ?? throw new ArgumentNullException(nameof(certificates));
         _scoringEngine = scoringEngine ?? throw new ArgumentNullException(nameof(scoringEngine));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -41,6 +44,8 @@ public sealed class VendorService : IVendorService
         await EnsureNameIsFreeAsync(request.Name, excludeVendorId: null, cancellationToken);
 
         var vendor = request.ToDomain(_timeProvider.GetUtcNow().UtcDateTime);
+        vendor.SetCertificates(await _certificates.ResolveAsync(request.SecurityCerts, cancellationToken));
+
         var created = await _repository.AddAsync(vendor, cancellationToken);
 
         _logger.LogInformation("Created vendor {VendorId} ({VendorName})", created.Id, created.Name);
@@ -83,6 +88,9 @@ public sealed class VendorService : IVendorService
         await EnsureNameIsFreeAsync(request.Name, excludeVendorId: id, cancellationToken);
 
         request.ApplyTo(vendor, _timeProvider.GetUtcNow().UtcDateTime);
+        // A full replacement: certificates the request omits are unlinked, the catalogue keeps them.
+        vendor.SetCertificates(await _certificates.ResolveAsync(request.SecurityCerts, cancellationToken));
+
         await _repository.UpdateAsync(vendor, cancellationToken);
 
         // The inputs changed, so any cached assessment is now stale.

@@ -25,10 +25,35 @@ public sealed class VendorProfileConfiguration : IEntityTypeConfiguration<Vendor
 
         builder.Property(vendor => vendor.MajorIncidents).IsRequired();
 
-        // Npgsql maps List<string> to text[], which keeps the certificates queryable.
-        builder.Property(vendor => vendor.SecurityCerts)
-            .HasColumnType("text[]")
-            .IsRequired();
+        // Certificates are a shared catalogue, joined many-to-many through vendor_certificates.
+        // The join entity is explicit so the table can be queried and named like the others.
+        builder.HasMany(vendor => vendor.Certificates)
+            .WithMany(certificate => certificate.Vendors)
+            .UsingEntity<VendorCertificate>(
+                join => join
+                    .HasOne(vendorCertificate => vendorCertificate.Certificate)
+                    .WithMany()
+                    .HasForeignKey(vendorCertificate => vendorCertificate.CertificateId)
+                    // A certificate still held by a vendor cannot be deleted out from under it.
+                    .OnDelete(DeleteBehavior.Restrict),
+                join => join
+                    .HasOne(vendorCertificate => vendorCertificate.Vendor)
+                    .WithMany()
+                    .HasForeignKey(vendorCertificate => vendorCertificate.VendorId)
+                    // Deleting a vendor drops its links, never the catalogue entries.
+                    .OnDelete(DeleteBehavior.Cascade),
+                join =>
+                {
+                    join.ToTable("vendor_certificates");
+                    join.HasKey(vendorCertificate =>
+                        new { vendorCertificate.VendorId, vendorCertificate.CertificateId });
+
+                    // The composite key covers vendor -> certificates; this covers the reverse.
+                    join.HasIndex(vendorCertificate => vendorCertificate.CertificateId);
+                });
+
+        // Projection over Certificates for the API contract, not a column.
+        builder.Ignore(vendor => vendor.SecurityCerts);
 
         builder.OwnsOne(vendor => vendor.Documents, documents =>
         {

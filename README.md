@@ -65,7 +65,7 @@ Redis is optional. It defaults to `localhost:6380`; clear `ConnectionStrings:Red
 dotnet test
 ```
 
-100 tests covering every rule boundary, the engine's roll-up and reason formatting, the service's cache behaviour, controller status codes, and a regression theory pinning all 15 seeded vendors.
+107 tests covering every rule boundary, the engine's roll-up and reason formatting, the certificate links and the two shipped datasets, the service's cache behaviour, controller status codes, and a regression theory pinning all 15 seeded vendors.
 
 ---
 
@@ -83,7 +83,7 @@ tests/
 
 Dependencies point inward only: `Api → Application → Domain` and `Infrastructure → Application → Domain`. The API references Infrastructure solely to wire up its composition root, so the application layer stays ignorant of EF Core and Redis.
 
-Every boundary is an interface — `IRiskRule`, `IRiskScoringEngine`, `IVendorRepository`, `ICacheService`, `IVendorService` — which is what lets the unit tests run with mocks and no database.
+Every boundary is an interface — `IRiskRule`, `IRiskScoringEngine`, `IVendorRepository`, `ISecurityCertificateRepository`, `ICacheService`, `IVendorService` — which is what lets the unit tests run with mocks and no database.
 
 ### How scoring works
 
@@ -133,7 +133,7 @@ Errors come back as RFC 7807 problem documents. Validation rejects `financialHea
 Two further rules apply to vendor data:
 
 - **Vendor names are unique, irrespective of case and surrounding whitespace.** `POST` or `PUT` with a name another vendor holds returns **409 Conflict**; an update that keeps the vendor's own name is fine. The service checks before writing, and a unique index on `LOWER("Name")` is the real guard, so two concurrent requests cannot slip a duplicate through.
-- **Security certificates are canonicalised** on the way in: trimmed, upper-cased, blanks dropped, and case-insensitive duplicates collapsed while preserving order. Posting `["iso27001","ISO27001"," Iso27001 ","soc2"]` stores `["ISO27001","SOC2"]`. Seeded rows go through the same normalisation.
+- **Security certificates are catalogue rows, not free text.** `securityCerts` still carries plain codes in the JSON contract, but each code is resolved against the `certificates` table and linked to the vendor through `vendor_certificates` — see [Certificates](#certificates). Codes are canonicalised on the way in: trimmed, upper-cased, blanks dropped, and case-insensitive duplicates collapsed. Posting `["iso27001","ISO27001"," Iso27001 ","soc2"]` links `ISO27001` and `SOC2`. Seeded rows go through the same normalisation, and responses list the codes sorted so the payload never depends on join order.
 
 ### Example requests
 
@@ -204,15 +204,38 @@ curl 'http://localhost:8080/api/vendor/compare?ids=1,3,5'
 
 ---
 
+## Certificates
+
+A certification is a thing in its own right — it has a code, a full name and a description, and many vendors hold the same one — so it lives in its own table rather than in an array column on the vendor.
+
+```
+vendors  ──<  vendor_certificates  >──  certificates
+  Id           VendorId  (FK, cascade)     Id
+  Name         CertificateId (FK, restrict) Code    unique, upper-cased
+  …            PK (VendorId, CertificateId) Name
+                                            Description
+```
+
+- **`certificates`** is the shared catalogue, unique by `Code`. [`data/SecurityCertificates.json`](data/SecurityCertificates.json) seeds ISO27001, ISO22301, SOC2 and PCI-DSS with their full names.
+- **`vendor_certificates`** is the join table, keyed on the pair, so the same certificate cannot be linked to a vendor twice. It is mapped from an explicit `VendorCertificate` entity rather than EF's implicit join type, so the table can be named and queried like any other.
+- Deleting a **vendor** cascades to its links and leaves the catalogue untouched. Deleting a **certificate** still held by a vendor is refused (`Restrict`).
+- A `POST` or `PUT` naming a code the catalogue does not hold **registers it** rather than rejecting the request, since the case study's contract takes free-form codes. Its name defaults to the code until someone gives it a better one.
+- `VendorProfile.SecurityCerts` is a sorted projection over the linked codes, which is what keeps the section 4 JSON shape unchanged; `HasCertification` — the lookup `MissingIso27001Rule` uses — remains case-insensitive.
+
+The `AddCertificateTables` migration carries existing data across: the codes in the old `text[]` column become catalogue rows and links before the column is dropped, and its `Down` writes them back, so the change is reversible on a populated database.
+
+---
+
 ## Dataset
 
 | File | Contents |
 | --- | --- |
 | [`data/SampleVendorData.json`](data/SampleVendorData.json) | The 15 sample vendors from appendix B, seeded on first run |
+| [`data/SecurityCertificates.json`](data/SecurityCertificates.json) | The certificate catalogue — codes with their full names. Not from the brief, which names the certifications (section 2) but ships no catalogue |
 | [`data/RiskFactorMatrix.json`](data/RiskFactorMatrix.json) | The full similarity matrix from appendix A — shipped but **not consumed** |
 | [`data/example-create.json`](data/example-create.json) | The `POST /api/vendor` body from section 8 |
 
-Seeding is idempotent: it runs only when the vendor table is empty, preserves the ids from the dataset, and realigns the identity sequence afterwards so later inserts do not collide.
+Seeding is idempotent and per table: the catalogue is filled only while `certificates` is empty and the vendors only while `vendors` is empty. Vendor ids from the dataset are preserved and the identity sequence is realigned afterwards so later inserts do not collide. A code used by a sample vendor that the catalogue does not describe is registered on the spot and logged as a warning — a test pins the two files against each other so that should not happen.
 
 How the seeded vendors assess under the current rule set:
 
@@ -236,6 +259,7 @@ Settings come from `appsettings.json` and can be overridden by environment varia
 | `ConnectionStrings:Redis` | `localhost:6380` | Optional. Set it to an empty string to disable caching entirely (no-op cache). |
 | `Database:MigrateOnStartup` | `true` | Set `false` when a pipeline applies migrations. |
 | `Database:SeedDatasetPath` | `data/SampleVendorData.json` | Relative to the content root, or absolute. |
+| `Database:SeedCertificateCatalogPath` | `data/SecurityCertificates.json` | The certificate catalogue. Relative to the content root, or absolute. |
 
 ### Caching
 

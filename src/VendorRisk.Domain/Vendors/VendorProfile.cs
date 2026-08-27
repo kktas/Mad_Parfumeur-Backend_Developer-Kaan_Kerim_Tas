@@ -19,10 +19,21 @@ public class VendorProfile
     public int MajorIncidents { get; set; }
 
     /// <summary>
-    /// Security certifications held, e.g. ISO27001, SOC2, PCI-DSS. Stored upper-cased and
-    /// de-duplicated; see <see cref="SecurityCertificates.Normalise"/>.
+    /// Certificates this vendor holds, drawn from the shared catalogue and persisted through the
+    /// vendor_certificates join table. Replace the set with <see cref="SetCertificates"/>.
     /// </summary>
-    public List<string> SecurityCerts { get; set; } = [];
+    public List<SecurityCertificate> Certificates { get; set; } = [];
+
+    /// <summary>
+    /// Certificate codes in the shape section 4 of the case study defines, e.g. ["ISO27001"].
+    /// Sorted, so the payload does not depend on the order the join table happens to return rows in.
+    /// </summary>
+    public IReadOnlyList<string> SecurityCerts =>
+    [
+        .. Certificates
+            .Select(certificate => certificate.Code)
+            .OrderBy(code => code, StringComparer.Ordinal)
+    ];
 
     public VendorDocuments Documents { get; set; } = new();
 
@@ -32,5 +43,18 @@ public class VendorProfile
 
     /// <summary>Case-insensitive certificate lookup, so "iso27001" and "ISO27001" both match.</summary>
     public bool HasCertification(string certification) =>
-        SecurityCerts.Any(cert => string.Equals(cert, certification, StringComparison.OrdinalIgnoreCase));
+        Certificates.Any(certificate =>
+            string.Equals(certificate.Code, certification, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Replaces the vendor's certificates, dropping repeats of the same code so the join table can
+    /// never hold a duplicate pair.
+    /// </summary>
+    public void SetCertificates(IEnumerable<SecurityCertificate>? certificates) =>
+        Certificates =
+        [
+            .. (certificates ?? [])
+                .Where(certificate => certificate is not null)
+                .DistinctBy(certificate => certificate.Code, StringComparer.OrdinalIgnoreCase)
+        ];
 }

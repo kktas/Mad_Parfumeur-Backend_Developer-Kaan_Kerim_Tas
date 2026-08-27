@@ -96,8 +96,11 @@ static async Task MigrateAndSeedAsync(WebApplication app)
         var dbContext = scope.ServiceProvider.GetRequiredService<VendorRiskDbContext>();
         await dbContext.Database.MigrateAsync();
 
-        var datasetPath = ResolveDatasetPath(app.Configuration, app.Environment.ContentRootPath);
-        await scope.ServiceProvider.GetRequiredService<DataSeeder>().SeedAsync(datasetPath);
+        var contentRoot = app.Environment.ContentRootPath;
+        var datasetPath = ResolveDataPath(app.Configuration, "Database:SeedDatasetPath", "data/SampleVendorData.json", contentRoot);
+        var catalogPath = ResolveDataPath(app.Configuration, "Database:SeedCertificateCatalogPath", "data/SecurityCertificates.json", contentRoot);
+
+        await scope.ServiceProvider.GetRequiredService<DataSeeder>().SeedAsync(datasetPath, catalogPath);
     }
     catch (Exception ex)
     {
@@ -107,9 +110,9 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     }
 }
 
-static string ResolveDatasetPath(IConfiguration configuration, string contentRootPath)
+static string ResolveDataPath(IConfiguration configuration, string key, string fallback, string contentRootPath)
 {
-    var configured = configuration["Database:SeedDatasetPath"] ?? "data/SampleVendorData.json";
+    var configured = configuration[key] ?? fallback;
 
     return Path.IsPathRooted(configured) ? configured : Path.Combine(contentRootPath, configured);
 }

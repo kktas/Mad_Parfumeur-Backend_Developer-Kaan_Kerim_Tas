@@ -23,6 +23,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddDbContext<VendorRiskDbContext>(options => options.UseNpgsql(postgresConnectionString));
 
         services.AddScoped<IVendorRepository, VendorRepository>();
+        services.AddScoped<ISecurityCertificateRepository, SecurityCertificateRepository>();
         services.AddScoped<DataSeeder>();
 
         return services.AddCache(configuration);

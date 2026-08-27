@@ -69,7 +69,17 @@ public sealed class VendorBuilder
         FinancialHealth = _financialHealth,
         SlaUptime = _slaUptime,
         MajorIncidents = _majorIncidents,
-        SecurityCerts = _securityCerts,
+        // Catalogue rows as the repository would hand them over. Codes are kept exactly as the
+        // test supplied them, so case-insensitive matching stays under test.
+        Certificates =
+        [
+            .. _securityCerts.Select((code, index) => new SecurityCertificate
+            {
+                Id = index + 1,
+                Code = code,
+                Name = code
+            })
+        ],
         Documents = new VendorDocuments
         {
             ContractValid = _contractValid,

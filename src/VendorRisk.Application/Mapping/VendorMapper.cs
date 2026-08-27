@@ -26,26 +26,32 @@ public static class VendorMapper
         }
     };
 
+    /// <summary>
+    /// Maps the request onto a new vendor. Certificates are left empty: the service resolves the
+    /// requested codes against the catalogue and sets them.
+    /// </summary>
     public static VendorProfile ToDomain(this CreateVendorRequest request, DateTime nowUtc) => new()
     {
         Name = request.Name.Trim(),
         FinancialHealth = request.FinancialHealth,
         SlaUptime = request.SlaUptime,
         MajorIncidents = request.MajorIncidents,
-        SecurityCerts = NormaliseCerts(request.SecurityCerts),
         Documents = ToDomain(request.Documents),
         CreatedAtUtc = nowUtc,
         UpdatedAtUtc = nowUtc
     };
 
-    /// <summary>Applies a full replacement update onto an existing vendor.</summary>
+    /// <summary>
+    /// Applies a full replacement update onto an existing vendor. Certificates are not touched
+    /// here: they are catalogue rows the service resolves and hands to
+    /// <see cref="VendorProfile.SetCertificates"/>.
+    /// </summary>
     public static void ApplyTo(this UpdateVendorRequest request, VendorProfile vendor, DateTime nowUtc)
     {
         vendor.Name = request.Name.Trim();
         vendor.FinancialHealth = request.FinancialHealth;
         vendor.SlaUptime = request.SlaUptime;
         vendor.MajorIncidents = request.MajorIncidents;
-        vendor.SecurityCerts = NormaliseCerts(request.SecurityCerts);
         vendor.Documents = ToDomain(request.Documents);
         vendor.UpdatedAtUtc = nowUtc;
     }
@@ -84,7 +90,4 @@ public static class VendorMapper
         PrivacyPolicyValid = documents.PrivacyPolicyValid,
         PentestReportValid = documents.PentestReportValid
     };
-
-    private static List<string> NormaliseCerts(IEnumerable<string>? certs) =>
-        SecurityCertificates.Normalise(certs);
 }

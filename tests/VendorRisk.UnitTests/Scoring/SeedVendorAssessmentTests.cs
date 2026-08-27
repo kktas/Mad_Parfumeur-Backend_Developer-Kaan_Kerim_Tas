@@ -79,20 +79,30 @@ public class SeedVendorAssessmentTests
 
         return dataset.Vendors.ToDictionary(
             record => record.Id,
-            record => new VendorProfile
+            record =>
             {
-                Id = record.Id,
-                Name = record.Name,
-                FinancialHealth = record.FinancialHealth,
-                SlaUptime = record.SlaUptime,
-                MajorIncidents = record.MajorIncidents,
-                SecurityCerts = record.SecurityCerts,
-                Documents = new VendorDocuments
+                var vendor = new VendorProfile
                 {
-                    ContractValid = record.Documents.ContractValid,
-                    PrivacyPolicyValid = record.Documents.PrivacyPolicyValid,
-                    PentestReportValid = record.Documents.PentestReportValid
-                }
+                    Id = record.Id,
+                    Name = record.Name,
+                    FinancialHealth = record.FinancialHealth,
+                    SlaUptime = record.SlaUptime,
+                    MajorIncidents = record.MajorIncidents,
+                    Documents = new VendorDocuments
+                    {
+                        ContractValid = record.Documents.ContractValid,
+                        PrivacyPolicyValid = record.Documents.PrivacyPolicyValid,
+                        PentestReportValid = record.Documents.PentestReportValid
+                    }
+                };
+
+                // Stands in for the seeder's catalogue lookup: the codes on the sample record
+                // become the certificate rows the vendor is linked to.
+                vendor.SetCertificates(SecurityCertificates
+                    .Normalise(record.SecurityCerts)
+                    .Select(code => new SecurityCertificate { Code = code, Name = code }));
+
+                return vendor;
             });
     }
 }

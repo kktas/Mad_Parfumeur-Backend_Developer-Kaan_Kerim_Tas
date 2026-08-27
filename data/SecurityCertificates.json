@@ -1,0 +1,24 @@
+{
+  "Certificates": [
+    {
+      "code": "ISO27001",
+      "name": "ISO/IEC 27001 Information Security Management",
+      "description": "Certified information security management system. Section 5 of the case study raises a high security risk when a vendor does not hold it."
+    },
+    {
+      "code": "ISO22301",
+      "name": "ISO 22301 Business Continuity Management",
+      "description": "Certified business continuity management system covering recovery objectives and continuity testing."
+    },
+    {
+      "code": "SOC2",
+      "name": "SOC 2 Type II",
+      "description": "Audited report on security, availability, processing integrity, confidentiality and privacy controls."
+    },
+    {
+      "code": "PCI-DSS",
+      "name": "PCI DSS",
+      "description": "Payment Card Industry Data Security Standard, required of vendors handling cardholder data."
+    }
+  ]
+}

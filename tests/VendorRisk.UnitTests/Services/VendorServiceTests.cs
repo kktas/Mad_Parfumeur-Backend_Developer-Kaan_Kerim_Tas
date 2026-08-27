@@ -11,13 +11,32 @@ namespace VendorRisk.UnitTests.Services;
 public class VendorServiceTests
 {
     private readonly Mock<IVendorRepository> _repository = new(MockBehavior.Strict);
+    private readonly Mock<ISecurityCertificateRepository> _certificates = new(MockBehavior.Strict);
     private readonly Mock<ICacheService> _cache = new(MockBehavior.Strict);
+
+    public VendorServiceTests()
+    {
+        // Stands in for the catalogue: every create and update resolves its codes through it, so
+        // the behaviour is set up once rather than in each test that happens to write a vendor.
+        _certificates
+            .Setup(repository => repository.ResolveAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<string>? codes, CancellationToken _) => Catalogue(codes));
+    }
 
     private VendorService CreateSut() => new(
         _repository.Object,
+        _certificates.Object,
         EngineFactory.Create(),
         _cache.Object,
         NullLogger<VendorService>.Instance);
+
+    /// <summary>One catalogue row per normalised code, as the repository returns once it has registered anything new.</summary>
+    private static IReadOnlyList<SecurityCertificate> Catalogue(IEnumerable<string>? codes) =>
+    [
+        .. SecurityCertificates
+            .Normalise(codes)
+            .Select((code, index) => new SecurityCertificate { Id = index + 1, Code = code, Name = code })
+    ];
 
     /// <summary>Default: the name is free, so uniqueness never blocks the test under inspection.</summary>
     private void NameIsFree() => _repository
@@ -175,6 +194,9 @@ public class VendorServiceTests
 
         Assert.NotNull(updated);
         Assert.Equal("Renamed Vendor", updated.Name);
+        // An update is a full replacement, so clearing securityCerts unlinks the vendor's certificates.
+        Assert.Empty(updated.SecurityCerts);
+        Assert.Empty(vendor.Certificates);
         _cache.Verify(cache => cache.RemoveAsync(CacheKeys.Assessment(3), It.IsAny<CancellationToken>()), Times.Once);
     }
 
